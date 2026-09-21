@@ -1,0 +1,277 @@
+{
+  "page_budget": 200,
+  "pages_used_total": 184,
+  "roles": {
+    "source": "Doc Pool 원 논문 (개발 주체의 자체 보고)",
+    "followup": "원 논문을 계승·개선한 후속 논문",
+    "benchmark": "제3자 실측",
+    "survey": "분야 분류 (서베이)"
+  },
+  "documents": [
+    {
+      "id": "kivi",
+      "file": "kivi_2402.02750.pdf",
+      "role": "source",
+      "tech": "SW",
+      "title": "KIVI: A Tuning-Free Asymmetric 2bit Quantization for KV Cache",
+      "authors": [
+        "Zirui Liu",
+        "Jiayi Yuan",
+        "Hongye Jin",
+        "Shaochen Zhong",
+        "Zhaozhuo Xu",
+        "Vladimir Braverman",
+        "Beidi Chen",
+        "Xia Hu"
+      ],
+      "year": 2024,
+      "venue": "ICML 2024",
+      "arxiv_id": "2402.02750",
+      "url": "https://arxiv.org/abs/2402.02750",
+      "peer_reviewed": true,
+      "pages_total": 15,
+      "pages_used": [
+        1,
+        15
+      ]
+    },
+    {
+      "id": "infinigen",
+      "file": "infinigen_2406.19707.pdf",
+      "role": "source",
+      "tech": "HW",
+      "title": "InfiniGen: Efficient Generative Inference of Large Language Models with Dynamic KV Cache Management",
+      "authors": [
+        "Wonbeom Lee",
+        "Jungi Lee",
+        "Junghwan Seo",
+        "Jaewoong Sim"
+      ],
+      "year": 2024,
+      "venue": "OSDI 2024",
+      "arxiv_id": "2406.19707",
+      "url": "https://arxiv.org/abs/2406.19707",
+      "peer_reviewed": true,
+      "pages_total": 18,
+      "pages_used": [
+        1,
+        18
+      ]
+    },
+    {
+      "id": "kvtuner",
+      "file": "kvtuner_2502.04420.pdf",
+      "role": "followup",
+      "tech": "SW",
+      "title": "KVTuner: Sensitivity-Aware Layer-Wise Mixed-Precision KV Cache Quantization for Efficient and Nearly Lossless LLM Inference",
+      "authors": [
+        "Xing Li",
+        "Zeyu Xing",
+        "Yiming Li",
+        "Linping Qu",
+        "Hui-Ling Zhen",
+        "Wulong Liu",
+        "Yiwu Yao",
+        "Sinno Jialin Pan",
+        "Mingxuan Yuan"
+      ],
+      "year": 2025,
+      "venue": "ICML 2025",
+      "arxiv_id": "2502.04420",
+      "url": "https://arxiv.org/abs/2502.04420",
+      "peer_reviewed": true,
+      "pages_total": 35,
+      "pages_used": [
+        1,
+        10
+      ]
+    },
+    {
+      "id": "xquant",
+      "file": "xquant_2510.11236.pdf",
+      "role": "followup",
+      "tech": "SW",
+      "title": "XQuant: Achieving Ultra-Low Bit KV Cache Quantization with Cross-Layer Compression",
+      "authors": [
+        "Haoqi Yang",
+        "Yao Yao",
+        "Zuchao Li",
+        "Baoyuan Qi",
+        "Guoming Liu",
+        "Hai Zhao"
+      ],
+      "year": 2025,
+      "venue": "EMNLP 2025",
+      "arxiv_id": "2510.11236",
+      "url": "https://arxiv.org/abs/2510.11236",
+      "peer_reviewed": true,
+      "pages_total": 16,
+      "pages_used": [
+        1,
+        16
+      ]
+    },
+    {
+      "id": "shadowkv",
+      "file": "shadowkv_2410.21465.pdf",
+      "role": "followup",
+      "tech": "HW",
+      "title": "ShadowKV: KV Cache in Shadows for High-Throughput Long-Context LLM Inference",
+      "authors": [
+        "Hanshi Sun",
+        "Li-Wen Chang",
+        "Wenlei Bao",
+        "Size Zheng",
+        "Ningxin Zheng",
+        "Xin Liu",
+        "Harry Dong",
+        "Yuejie Chi",
+        "Beidi Chen"
+      ],
+      "year": 2024,
+      "venue": "arXiv preprint, arXiv:2410.21465",
+      "arxiv_id": "2410.21465",
+      "url": "https://arxiv.org/abs/2410.21465",
+      "peer_reviewed": false,
+      "pages_total": 21,
+      "pages_used": [
+        1,
+        21
+      ]
+    },
+    {
+      "id": "retroinfer",
+      "file": "retroinfer_2505.02922.pdf",
+      "role": "followup",
+      "tech": "HW",
+      "title": "RetroInfer: A Vector Storage Engine for Scalable Long-Context LLM Inference",
+      "authors": [
+        "Yaoqi Chen",
+        "Jinkai Zhang",
+        "Baotong Lu",
+        "Qianxi Zhang",
+        "Chengruidong Zhang",
+        "Jing Liu",
+        "Jingjia Luo",
+        "Di Liu",
+        "Huiqiang Jiang",
+        "Qi Chen",
+        "Bailu Ding",
+        "Xiao Yan",
+        "Jiawei Jiang",
+        "Chen Chen",
+        "Mingxing Zhang",
+        "Cheng Li",
+        "Yuqing Yang",
+        "Fan Yang",
+        "Mao Yang"
+      ],
+      "year": 2025,
+      "venue": "PVLDB 19(5): 1016-1031, 2026",
+      "arxiv_id": "2505.02922",
+      "url": "https://arxiv.org/abs/2505.02922",
+      "peer_reviewed": true,
+      "pages_total": 16,
+      "pages_used": [
+        1,
+        16
+      ]
+    },
+    {
+      "id": "bench_kivi",
+      "file": "bench_kivi_2607.05399.pdf",
+      "role": "benchmark",
+      "tech": "SW",
+      "title": "Benchmarking KV-Cache Optimizations across Task Quality and System Performance for Long-Context Serving",
+      "authors": [
+        "Nikita Agrawal",
+        "Ruben Mayer"
+      ],
+      "year": 2026,
+      "venue": "arXiv preprint, arXiv:2607.05399",
+      "arxiv_id": "2607.05399",
+      "url": "https://arxiv.org/abs/2607.05399",
+      "peer_reviewed": false,
+      "pages_total": 13,
+      "pages_used": [
+        1,
+        13
+      ]
+    },
+    {
+      "id": "bench_infinigen",
+      "file": "bench_infinigen_2604.05012.pdf",
+      "role": "benchmark",
+      "tech": "HW",
+      "title": "Comparative Characterization of KV Cache Management Strategies for LLM Inference",
+      "authors": [
+        "Oteo Mamo",
+        "Olga Kogiou",
+        "Hyunjin Yi",
+        "Weikuan Yu"
+      ],
+      "year": 2026,
+      "venue": "arXiv preprint, arXiv:2604.05012 (v2)",
+      "arxiv_id": "2604.05012",
+      "url": "https://arxiv.org/abs/2604.05012",
+      "peer_reviewed": false,
+      "pages_total": 8,
+      "pages_used": [
+        1,
+        8
+      ]
+    },
+    {
+      "id": "survey_tmlr",
+      "file": "survey_tmlr_2412.19442.pdf",
+      "role": "survey",
+      "tech": "BOTH",
+      "title": "A Survey on Large Language Model Acceleration based on KV Cache Management",
+      "authors": [
+        "Haoyang Li",
+        "Yiming Li",
+        "Anxin Tian",
+        "Tianhao Tang",
+        "Zhanchao Xu",
+        "Xuejia Chen",
+        "Nicole Hu",
+        "Wei Dong",
+        "Qing Li",
+        "Lei Chen"
+      ],
+      "year": 2024,
+      "venue": "TMLR 2025",
+      "arxiv_id": "2412.19442",
+      "url": "https://arxiv.org/abs/2412.19442",
+      "peer_reviewed": true,
+      "pages_total": 40,
+      "pages_used": [
+        1,
+        40
+      ]
+    },
+    {
+      "id": "survey_acl",
+      "file": "survey_acl_2607.08057.pdf",
+      "role": "survey",
+      "tech": "BOTH",
+      "title": "Towards Efficient Large Language Model Serving: A Survey on System-Aware KV Cache Optimization",
+      "authors": [
+        "Jiantong Jiang",
+        "Peiyu Yang",
+        "Rui Zhang",
+        "Feng Liu"
+      ],
+      "year": 2026,
+      "venue": "ACL 2026 Findings",
+      "arxiv_id": "2607.08057",
+      "url": "https://arxiv.org/abs/2607.08057",
+      "peer_reviewed": true,
+      "pages_total": 27,
+      "pages_used": [
+        1,
+        27
+      ]
+    }
+  ]
+}
