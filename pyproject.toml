@@ -1,7 +1,7 @@
 [project]
 name = "kv-cache-optimization-multi-agents"
 version = "0.1.0"
-description = "Add your description here"
+description = "LangGraph multi-agent evaluation of KV cache optimization techniques"
 readme = "README.md"
 authors = [
     { name = "thisischeese", email = "iamclwm@gmail.com" }
@@ -15,9 +15,17 @@ dependencies = [
     "python-dotenv>=1.2.3",
 ]
 
-[project.scripts]
-kv-cache-optimization-multi-agents = "kv_cache_optimization_multi_agents:main"
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
 
 [build-system]
 requires = ["uv_build>=0.12.2,<0.13.0"]
 build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "kv_eval"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
