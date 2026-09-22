@@ -172,6 +172,9 @@ uv run python scripts/test_retrieval.py --query "..." --tech-id kivi
 uv run python scripts/compare_retrieval.py                 # collection 간 검색 품질 비교
 uv run python scripts/eval_retrieval.py                    # Recall@5 / MRR / page 단위 지표
 ```
+## Results
+<img width="1371" height="91" alt="image" src="https://github.com/user-attachments/assets/b28fb303-86d1-4ec3-a68e-d12151a9260c" />
+
 
 ## Contributors
 
