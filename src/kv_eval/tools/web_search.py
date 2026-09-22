@@ -4,6 +4,10 @@ from collections.abc import Callable
 
 from pydantic import BaseModel
 
+from perplexity import Perplexity
+
+from kv_eval.config import perplexity_api_key
+
 
 class WebEvidence(BaseModel):
     """검색 결과에서 보존할 외부 근거 정보"""
@@ -51,4 +55,34 @@ def search_web(
 
     return results[:max_results]
 
-    
+def perplexity_search(
+    query: str,
+    max_results: int,
+    domains: list[str] | None,
+) -> list[WebEvidence]:
+    """Perplexity API를 사용하여 웹 검색을 수행합니다."""
+
+    api_key = perplexity_api_key()
+
+    if not api_key:
+        raise RuntimeError("PERPLEXITY_API_KEY가 설정되지 않았습니다.")
+
+    client = Perplexity(api_key=api_key)
+
+    search = client.search.create(
+        query=query,
+        max_results=min(max_results, 20),  # Perplexity API는 최대 20개의 결과만 반환합니다.
+        search_context_size="medium",
+        search_domain_filter=domains or None,
+    )
+
+    return [
+        WebEvidence(
+            title=result.title,
+            url=result.url,
+            snippet=result.snippet,
+            source_type="web",
+            published_at=result.date,
+        )
+        for result in search.results
+    ]
