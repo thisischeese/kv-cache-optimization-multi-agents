@@ -62,6 +62,7 @@ def test_trl_agent_combines_rag_and_web_evidence(monkeypatch) -> None:
         "framework_doc",
     }
     assert result.tech_results["kivi"]
+    assert result.levels["kivi"].level is None
 
 def test_trl_level_is_5_for_research_evidence() -> None:
     evidence = [
@@ -130,3 +131,38 @@ def test_trl_level_is_6_for_three_frameworks() -> None:
 
     assert result.level == 6
     assert result.lower_bound == 6
+
+def test_trl_level_is_not_6_without_all_required_frameworks() -> None:
+    evidence = [
+        Evidence(
+            evidence_id="vllm",
+            claim="Framework support",
+            source_id="vllm",
+            tech_id="kivi",
+            source_type="framework_doc",
+            site="docs.vllm.ai",
+            independent=True,
+        ),
+        Evidence(
+            evidence_id="sglang",
+            claim="Framework support",
+            source_id="sglang",
+            tech_id="kivi",
+            source_type="framework_doc",
+            site="docs.sglang.ai",
+            independent=True,
+        ),
+        Evidence(
+            evidence_id="other",
+            claim="Other framework support",
+            source_id="other",
+            tech_id="kivi",
+            source_type="framework_doc",
+            site="example.com",
+            independent=True,
+        ),
+    ]
+
+    result = _evaluate_trl_level(evidence, "kivi")
+
+    assert result.level != 6

@@ -1,10 +1,12 @@
 """TRL 평가 Agent."""
 
 from kv_eval.agents.trl_queries import (
+    TRL6_FRAMEWORKS,
     TRL_RAG_DOC_TYPES,
     build_trl_rag_queries,
     build_trl_web_queries,
 )
+
 from kv_eval.rag.retriever import retrieve
 from kv_eval.rag.types import RetrievedChunk
 from kv_eval.schemas import Evidence, TRLLevel, TRLResult
@@ -213,7 +215,14 @@ def _evaluate_trl_level(
         "benchmark",
     }.issubset(source_types)
 
-    has_all_frameworks = len(framework_sites) >= 3
+    required_framework_sites = {
+        domain
+        for _, domain in TRL6_FRAMEWORKS
+    }
+
+    has_all_frameworks = required_framework_sites.issubset(
+        framework_sites
+    )
     has_company_evidence = "company" in source_types
 
     if has_company_evidence:
