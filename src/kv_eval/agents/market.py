@@ -2,6 +2,7 @@
 
 from collections import Counter
 from pathlib import Path
+import re
 
 from pydantic import BaseModel
 
@@ -17,6 +18,27 @@ from kv_eval.tools.web_search import web_source_id
 
 
 _MARKET_PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "market.md"
+
+
+def _mentions_tech_and_kv_cache(
+    item: WebEvidence,
+    tech_name: str,
+) -> bool:
+    """검색 결과 제목과 요약에 기술명 및 KV cache 맥락이 있는지 확인한다."""
+
+    text = f"{item.title} {item.snippet}"
+    has_tech_name = re.search(
+        rf"\b{re.escape(tech_name)}\b",
+        text,
+        flags=re.IGNORECASE,
+    ) is not None
+    has_kv_cache = re.search(
+        r"\bkv[\s_-]*cache\b|\bkey[\s-]*value[\s_-]*cache\b",
+        text,
+        flags=re.IGNORECASE,
+    ) is not None
+
+    return has_tech_name and has_kv_cache
 
 
 class _LLMMarketAssessment(BaseModel):
@@ -132,6 +154,7 @@ def _collect_market_evidence(
         collected.extend(
             (query["criterion"], result)
             for result in results
+            if _mentions_tech_and_kv_cache(result, tech_name)
         )
 
     unique: dict[tuple[str, str], tuple[str, WebEvidence]] = {}
