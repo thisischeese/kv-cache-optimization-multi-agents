@@ -7,9 +7,12 @@ from kv_eval.agents.trl import (
     _LLMTRLAssessment,
     _assessment_to_level,
     _build_trl_prompt,
+    _collect_web_evidence,
     _evaluate_trl_level,
+    _has_company_adoption_signal,
     _is_company_first_party_source,
     _mentions_tech_and_kv_cache,
+    _search_web_with_cache,
 )
 from kv_eval.schemas import Evidence
 
@@ -189,6 +192,133 @@ def test_company_first_party_source_requires_official_signal() -> None:
 
     assert _is_company_first_party_source(official) is True
     assert _is_company_first_party_source(third_party) is False
+
+
+def test_company_source_requires_actual_adoption_signal() -> None:
+    general_guide = WebEvidence(
+        title="KIVI KV cache setup guide",
+        url="https://www.example.com/kivi-guide",
+        snippet="This guide explains how to run KIVI through a separate Transformers path.",
+    )
+    adoption = WebEvidence(
+        title="Our production KV cache platform",
+        url="https://blog.example.com/kivi-production",
+        snippet="We deployed KIVI in production on our platform.",
+    )
+
+    assert _has_company_adoption_signal(general_guide) is False
+    assert _has_company_adoption_signal(adoption) is True
+
+
+def test_web_collection_rejects_non_framework_domain(monkeypatch) -> None:
+    monkeypatch.setattr(
+        trl_module,
+        "search_web",
+        lambda **_: [
+            WebEvidence(
+                title="KIVI KV cache integration",
+                url="https://www.example.com/kivi",
+                snippet="KIVI supports KV cache LLM inference.",
+            )
+        ],
+    )
+
+    assert _collect_web_evidence("KIVI") == []
+
+
+def test_web_search_cache_reuses_same_query(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(
+        trl_module,
+        "_TRL_WEB_CACHE_PATH",
+        tmp_path / "trl_web_cache.json",
+    )
+    result = WebEvidence(
+        title="KIVI KV cache integration",
+        url="https://docs.vllm.ai/kivi",
+        snippet="KIVI supports KV cache LLM inference.",
+    )
+    monkeypatch.setattr(
+        trl_module,
+        "search_web",
+        lambda **_: [result],
+    )
+
+    first = _search_web_with_cache("KIVI KV cache", ["docs.vllm.ai"])
+
+    monkeypatch.setattr(
+        trl_module,
+        "search_web",
+        lambda **_: (_ for _ in ()).throw(AssertionError("cache miss")),
+    )
+    second = _search_web_with_cache("KIVI KV cache", ["docs.vllm.ai"])
+
+    assert first == second == [result]
+
+
+def test_trl_level_uses_evidence_policy_instead_of_llm_judgment() -> None:
+    evidence = [
+        Evidence(
+            evidence_id="core-1",
+            claim="Core paper",
+            source_id="kivi",
+            tech_id="kivi",
+            source_type="core",
+        ),
+        Evidence(
+            evidence_id="followup-1",
+            claim="Follow-up paper",
+            source_id="kvtuner",
+            tech_id="kivi",
+            source_type="followup",
+        ),
+        Evidence(
+            evidence_id="benchmark-1",
+            claim="External benchmark",
+            source_id="bench-kivi",
+            tech_id="kivi",
+            source_type="benchmark",
+        ),
+    ]
+    result = trl_module._judge_trl_level("KIVI", evidence, "kivi")
+
+    assert result.level == 5
+    assert result.confidence == "medium"
+
+
+def test_trl_level_is_stable_when_same_evidence_is_reused() -> None:
+    evidence = [
+        Evidence(
+            evidence_id="core-1",
+            claim="Core paper",
+            source_id="kivi",
+            tech_id="kivi",
+            source_type="core",
+        ),
+        Evidence(
+            evidence_id="followup-1",
+            claim="Follow-up paper",
+            source_id="kvtuner",
+            tech_id="kivi",
+            source_type="followup",
+        ),
+        Evidence(
+            evidence_id="benchmark-1",
+            claim="External benchmark",
+            source_id="bench-kivi",
+            tech_id="kivi",
+            source_type="benchmark",
+        ),
+    ]
+
+    results = [
+        trl_module._judge_trl_level("KIVI", evidence, "kivi")
+        for _ in range(10)
+    ]
+
+    assert {
+        (result.level, result.lower_bound, result.confidence)
+        for result in results
+    } == {(5, 5, "medium")}
 
 
 def test_web_evidence_requires_technology_and_kv_cache_context() -> None:
