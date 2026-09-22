@@ -111,13 +111,15 @@ def _fallback_queries(tech: Tech, spec: ItemSpec) -> list[str]:
 
 
 # "(passages 1, 3)", "(passage_numbers:[2])" and bare "(3,4)" are prompt-local
-# passage numbering, meaningless to readers; citations carry the real locators.
+# passage numbering, and "(p.9)" repeats the page; citations carry the real locators.
 _PASSAGE_REF = re.compile(r"\s*\([^()]*passage[^()]*\)", re.IGNORECASE)
 _BARE_REF = re.compile(r"\s*\((?:\d+\s*(?:,|and)\s*)*\d+\)")
+_PAGE_REF = re.compile(r"\s*\((?:pp?\.|pages?)\s*\d+(?:\s*[-,]\s*\d+)*\)", re.IGNORECASE)
 
 
 def _clean_point_text(text: str) -> str:
-    text = _BARE_REF.sub("", _PASSAGE_REF.sub("", text))
+    for pattern in (_PASSAGE_REF, _BARE_REF, _PAGE_REF):
+        text = pattern.sub("", text)
     return " ".join(text.split())
 
 

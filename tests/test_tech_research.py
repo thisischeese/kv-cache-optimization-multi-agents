@@ -164,6 +164,14 @@ def test_rewrite_loop_recovers_on_second_query() -> None:
     assert section.points[0].citations[0].page == 4
 
 
+def test_selection_reason_reaches_only_the_search_prompts() -> None:
+    deps, llm = make_deps()
+    run_tech_research(TARGETS[:1], deps)
+
+    with_summary = {name for name, human in llm.calls if "Technique summary" in human}
+    assert with_summary == {"QueryOut"}
+
+
 def test_uncited_or_invented_passage_numbers_are_dropped() -> None:
     def handler(schema, human):
         if schema is ExtractOut and "Extraction target: Mechanism" in human:
@@ -269,6 +277,7 @@ def test_passage_numbers_are_stripped_from_point_text() -> None:
                     PointOut(text="KIVI cuts memory (passages 1, 2).", passage_numbers=[1, 2]),
                     PointOut(text="Batch grows (passage_numbers:[2]).", passage_numbers=[2]),
                     PointOut(text="Keys are skewed offline (1,2).", passage_numbers=[1, 2]),
+                    PointOut(text="Throughput rises (p.9).", passage_numbers=[1]),
                 ]
             )
         return default_handler(schema, human)
@@ -280,6 +289,7 @@ def test_passage_numbers_are_stripped_from_point_text() -> None:
         "KIVI cuts memory.",
         "Batch grows.",
         "Keys are skewed offline.",
+        "Throughput rises.",
     ]
     assert [c.page for c in points[0].citations] == [2, 3]
 
@@ -324,20 +334,23 @@ def test_resolve_retriever_uses_offline_index_without_qdrant_credentials(monkeyp
     assert retriever is not None
 
 
-def test_rag_retriever_adapter_builds_chunk_id_from_chunk_index() -> None:
+def test_rag_retriever_adapter_keeps_the_owner_chunk_id() -> None:
     from kv_eval.subgraphs.tech_research.retriever import adapt_rag_retriever
+
+    owner_id = "509a8772-be03-57e2-a04d-806aaa4d5e06"
 
     def owner_retrieve(query, tech_id=None, doc_types=None, top_k=5):
         return [
             {
-                "text": "t", "doc_id": "kivi", "page": 3, "tech_id": "kivi", "camp": "SW",
-                "doc_type": "core", "chunk_index": 1, "score": 0.8,
+                "text": "t", "chunk_id": owner_id, "doc_id": "kivi", "page": 3,
+                "tech_id": "kivi", "camp": "SW", "doc_type": "core", "chunk_index": 1,
+                "score": 0.8,
             }
         ]  # fmt: skip
 
     chunk = adapt_rag_retriever(owner_retrieve)("q", tech_id="kivi")[0]
 
-    assert chunk.chunk_id == "kivi:p3:c1"
+    assert chunk.chunk_id == owner_id
     assert chunk.score == 0.8
 
 
@@ -391,6 +404,21 @@ def test_target_node_merges_under_main_graph_send_in_rag_mode(monkeypatch) -> No
     assert all(isinstance(profile, CitedTechProfile) for profile in profiles.values())
 
 
+def test_offline_chunk_ids_follow_the_indexer_point_ids() -> None:
+    from kv_eval.config import qdrant_collection
+    from kv_eval.ingestion.indexer import chunk_id_for_chunk
+    from kv_eval.rag.types import DocumentChunk
+    from kv_eval.subgraphs.tech_research import LocalPdfRetriever
+
+    chunk = LocalPdfRetriever.from_manifest(doc_ids={"kivi"}).chunks[0]
+    same = DocumentChunk(
+        text="", doc_id=chunk.doc_id, title="", page=chunk.page, tech_id="", camp="",
+        doc_type="", chunk_index=0,
+    )  # fmt: skip
+
+    assert chunk.chunk_id == chunk_id_for_chunk(same, collection_name=qdrant_collection())
+
+
 def test_offline_retriever_uses_ingestion_chunks_and_filters() -> None:
     from kv_eval.subgraphs.tech_research import LocalPdfRetriever
 
@@ -402,7 +430,8 @@ def test_offline_retriever_uses_ingestion_chunks_and_filters() -> None:
     assert chunks
     assert all(chunk.doc_id == "kivi" and chunk.doc_type == "core" for chunk in chunks)
     assert all(1 <= chunk.page <= 15 for chunk in chunks)
-    assert all(chunk.chunk_id.startswith(f"kivi:p{chunk.page}:c") for chunk in chunks)
+    ids = [chunk.chunk_id for chunk in retriever.chunks]
+    assert len(ids) == len(set(ids))  # one id per (doc_id, page, chunk_index)
 
     followups = retriever("mixed precision", tech_id="kivi", doc_types=["followup"])
     assert followups and all(chunk.doc_id == "kvtuner" for chunk in followups)

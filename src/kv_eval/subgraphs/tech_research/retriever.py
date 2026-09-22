@@ -5,8 +5,9 @@ role), used when QDRANT_ENDPOINT and QDRANT_API_KEY are set.
 
 Offline backend: ``LocalPdfRetriever`` runs the RAG owner's own ingestion
 (layout-aware loader, header/footer removal, page-preserving splitter) on
-``data/papers`` and scores chunks with BM25. Chunks, pages and chunk ids are
-therefore identical to the Qdrant collection; only the ranking differs.
+``data/papers`` and scores chunks with BM25. Chunk ids come from the indexer's
+``chunk_id_for_chunk`` (the Qdrant point id), so chunks, pages and chunk ids are
+identical to the Qdrant collection; only the ranking differs.
 """
 
 import hashlib
@@ -23,7 +24,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Protocol
 
-from kv_eval.config import PROJECT_ROOT, qdrant_api_key, qdrant_endpoint
+from kv_eval.config import PROJECT_ROOT, qdrant_api_key, qdrant_collection, qdrant_endpoint
 from kv_eval.subgraphs.tech_research.state import RetrievedChunk
 
 logger = logging.getLogger(__name__)
@@ -41,11 +42,6 @@ class Retriever(Protocol):
         doc_types: list[str] | None = None,
         top_k: int = 5,
     ) -> list[RetrievedChunk]: ...
-
-
-def chunk_id_for(doc_id: str, page: int, chunk_index: int) -> str:
-    """Same identity the Qdrant indexer uses for a point: doc_id, page, chunk_index."""
-    return f"{doc_id}:p{page}:c{chunk_index}"
 
 
 def _module_exists(name: str) -> bool:
@@ -70,7 +66,7 @@ def resolve_retriever() -> tuple[Retriever | None, str]:
 
 
 def adapt_rag_retriever(retrieve: Callable[..., list[Any]]) -> Retriever:
-    """Wrap the RAG owner's retrieve() so it returns RetrievedChunk with a chunk_id.
+    """Wrap the RAG owner's retrieve() so it returns this subgraph's RetrievedChunk.
 
     Calls are serialized: the items run in parallel threads, and retrieve() shares
     one local embedding model (often on MPS/CUDA) that is not safe to call
@@ -98,13 +94,10 @@ def _to_chunk(item: Any) -> RetrievedChunk:
         data = item.model_dump()
     else:
         data = dict(vars(item))
-    if not data.get("chunk_id"):
-        if data.get("chunk_index") is not None:
-            data["chunk_id"] = chunk_id_for(data["doc_id"], data["page"], data["chunk_index"])
-        else:
-            digest = hashlib.sha1(data["text"].encode("utf-8")).hexdigest()[:8]
-            data["chunk_id"] = f"{data['doc_id']}:p{data['page']}:{digest}"
-            logger.warning("retrieve() returned no chunk_index; derived %s", data["chunk_id"])
+    if not data.get("chunk_id"):  # the Qdrant retriever always sets it; other sources may not
+        digest = hashlib.sha1(data["text"].encode("utf-8")).hexdigest()[:8]
+        data["chunk_id"] = f"{data['doc_id']}:p{data['page']}:{digest}"
+        logger.warning("retrieve() returned no chunk_id; derived %s", data["chunk_id"])
     return RetrievedChunk.model_validate(data)
 
 
@@ -155,11 +148,13 @@ class LocalPdfRetriever:
         doc_ids: set[str] | None = None,
     ) -> "LocalPdfRetriever":
         from kv_eval.ingestion.cleaner import remove_repeated_headers_footers
+        from kv_eval.ingestion.indexer import chunk_id_for_chunk
         from kv_eval.ingestion.loader import extract_pdf_pages
         from kv_eval.ingestion.splitter import split_pages
         from kv_eval.rag.types import Manifest, resolve_pdf_path
 
         manifest = Manifest.model_validate(json.loads(manifest_path.read_text(encoding="utf-8")))
+        collection = qdrant_collection()
         chunks: list[RetrievedChunk] = []
         for document in manifest.documents:
             if doc_ids is not None and document.doc_id not in doc_ids:
@@ -171,7 +166,7 @@ class LocalPdfRetriever:
                         text=chunk.text,
                         doc_id=chunk.doc_id,
                         page=chunk.page,
-                        chunk_id=chunk_id_for(chunk.doc_id, chunk.page, chunk.chunk_index),
+                        chunk_id=chunk_id_for_chunk(chunk, collection_name=collection),
                         tech_id=chunk.tech_id,
                         doc_type=chunk.doc_type,
                     )

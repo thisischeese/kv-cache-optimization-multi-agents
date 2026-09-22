@@ -117,14 +117,19 @@ Messages = list[tuple[str, str]]
 def _context(tech: Tech, spec: ItemSpec) -> str:
     return (
         f"Technique: {tech.name}\n"
-        f"Technique summary: {tech.selection_reason}\n"
         f"Extraction target: {spec.title}\n"
         f"Target description: {spec.instruction}"
     )
 
 
 def _search_context(tech: Tech, spec: ItemSpec) -> str:
-    return f"{_context(tech, spec)}\nWords the paper may use for this target: {spec.vocabulary}"
+    # The team's selection reason helps the LLM write queries, but it is not from the
+    # paper, so it stays out of the grade, extract and verify prompts.
+    return (
+        f"{_context(tech, spec)}\n"
+        f"Technique summary (for search only): {tech.selection_reason}\n"
+        f"Words the paper may use for this target: {spec.vocabulary}"
+    )
 
 
 def format_passages(chunks: list[RetrievedChunk]) -> str:

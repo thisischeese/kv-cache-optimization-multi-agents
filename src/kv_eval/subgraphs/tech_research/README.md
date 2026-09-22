@@ -57,13 +57,13 @@ uv run python app.py                        # 실제 LLM + Qdrant
 | `TECH_RESEARCH_JUDGE_MODEL` | 위와 같음 | `verify` 단계 모델 |
 
 리트리버는 자동으로 고릅니다.
-- **Qdrant:** `QDRANT_ENDPOINT`와 `QDRANT_API_KEY`가 있으면 1번 담당의 `kv_eval.rag.retriever.retrieve()`를 씁니다. 결과의 `chunk_index`로 `chunk_id`(`{doc_id}:p{page}:c{chunk_index}`)를 만들며, 이는 적재 때 Qdrant 점 ID를 만드는 조합과 같습니다.
-- **오프라인:** Qdrant 설정이 없으면 1번 담당의 적재 파이프라인(로더, 머리글과 바닥글 제거, 분할기)을 `data/papers`에 그대로 돌리고 BM25로 순위를 매깁니다. 청크, 쪽, `chunk_id`는 Qdrant와 같고 순위만 다릅니다.
+- **Qdrant:** `QDRANT_ENDPOINT`와 `QDRANT_API_KEY`가 있으면 1번 담당의 `kv_eval.rag.retriever.retrieve()`를 씁니다. `chunk_id`는 1번 담당이 적재 때 payload에 넣은 값(Qdrant 점 ID와 같은 UUID)을 그대로 씁니다.
+- **오프라인:** Qdrant 설정이 없으면 1번 담당의 적재 파이프라인(로더, 머리글과 바닥글 제거, 분할기)을 `data/papers`에 그대로 돌리고 BM25로 순위를 매깁니다. `chunk_id`도 1번 담당의 `chunk_id_for_chunk()`로 만들어, 청크, 쪽, `chunk_id`가 Qdrant와 같고 순위만 다릅니다.
 - **mock:** 둘 다 없으면 `auto` 모드는 mock으로 돌아갑니다.
 
 검색 호출은 직렬화합니다. 항목들이 병렬 스레드로 돌 때, 1번 담당의 `retrieve()`가 GPU(MPS/CUDA)에 올린 임베딩 모델 하나를 공유하기 때문입니다.
 
-## 실행 기록 (2026-09-22, gpt-4.1-mini, Qdrant)
+## 실행 기록 (2026-09-22, gpt-4.1-mini, chunk_id 반영 후 재구축한 Qdrant)
 
 - 두 기술 모두 7개 항목이 전부 채워졌습니다.
 - 호출 수와 시간:
@@ -71,12 +71,13 @@ uv run python app.py                        # 실제 LLM + Qdrant
   - Qdrant 검색 14회
   - 약 40초(첫 실행에는 임베딩 모델 1.1GB 내려받기가 더해짐)
 - 코드로 확인한 것:
-  - 모든 인용의 `chunk_id`가 실제 검색 결과에 있었습니다.
+  - 인용 70건이 모두 Qdrant가 돌려준 `chunk_id`(점 ID와 같은 UUID)였습니다.
   - `doc_id`, `page`, `doc_type`이 일치하고, 원 논문(`core`) 밖의 인용이 없습니다.
-  - Qdrant가 돌려준 청크 텍스트가 오프라인 색인과 한 글자도 다르지 않습니다.
-- 버린 문장은 2건이었고, 원문과 대조해 보니 둘 다 정당한 기각이었습니다.
+  - 같은 `chunk_id`로 오프라인 색인을 찾으면 청크 텍스트가 한 글자도 다르지 않습니다.
+- 버린 문장은 모두 원문과 대조해 정당한 기각이었습니다. 예:
   - 원문에 없는 배치 크기 "1"
-  - 원문에 없는 "implies" 추론
+  - 원문에 없는 추론
+  - 프롬프트의 기술 요약 문구가 섞인 문장. 이후 요약은 질의 생성에만 넣습니다
 - 재작성 루프는 오프라인 검색기 실행에서 실제로 돌았습니다(한계 항목에서 질의 2~3회). Qdrant 실행에서는 첫 질의로 모두 충분했습니다.
 
 ## 다른 담당에게 요청할 것
@@ -108,9 +109,8 @@ uv run python app.py                        # 실제 LLM + Qdrant
 
 **1번 (RAG / Qdrant)**
 
-1. `RetrievedChunk`에 `chunk_id`가 없어 어댑터가 `{doc_id}:p{page}:c{chunk_index}`로 만듭니다. 적재 때의 점 ID와 같은 조합이지만, 필드로 넣어 주시면 이 규칙을 양쪽에서 따로 관리하지 않아도 됩니다.
-2. 분수 수식이 추출에서 뭉개집니다. KIVI p.6의 "window size is expected to be R/2"가 "R 2"로 들어가 있어, LLM이 R^2로 잘못 옮긴 적이 있습니다. 한계로 기록만 해도 됩니다.
-3. `kv_eval.ingestion.loader`가 `import fitz`를 써서 PyMuPDF 폐기 예정 경고가 나옵니다(`import pymupdf` 권장). 동작에는 문제없습니다.
+1. 분수 수식이 추출에서 뭉개집니다. KIVI p.6의 "window size is expected to be R/2"가 "R 2"로 들어가 있어, LLM이 R^2로 잘못 옮긴 적이 있습니다. 한계로 기록만 해도 됩니다.
+2. `chunk_id` 규칙(`chunk_id_for_chunk`)이나 컬렉션 이름이 바뀌면 오프라인 검색기의 ID도 따라 바뀝니다. 이 모듈이 그 함수를 직접 부르기 때문입니다.
 
 ## 알려진 한계
 

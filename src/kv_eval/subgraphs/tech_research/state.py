@@ -33,8 +33,8 @@ NOT_FOUND_TEXT = "(not found in the source paper)"
 class RetrievedChunk(BaseModel):
     """One retrieved passage.
 
-    Mirrors the ``retrieve()`` contract of the RAG owner (text, doc_id, page,
-    tech_id, doc_type, score) and adds ``chunk_id``, which citations need.
+    Mirrors the RAG owner's ``kv_eval.rag.types.RetrievedChunk``. ``chunk_id`` is
+    the Qdrant point id the indexer assigns, which citations reference.
     """
 
     text: str
