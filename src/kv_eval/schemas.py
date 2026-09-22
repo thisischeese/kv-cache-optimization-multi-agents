@@ -10,10 +10,10 @@ None as "not evaluated" rather than as a failure.
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 SourceType = Literal[
-    "paper",          # 원 논문 (Doc Pool)
+    "core",           # 원 논문 (Doc Pool). RAG payload doc_type과 같은 값
     "followup",       # 후속 논문
     "benchmark",      # 제3자 실측 논문
     "survey",         # 서베이
@@ -45,7 +45,9 @@ class Evidence(BaseModel):
     # (e.g. "kivi"). Web: the id assigned by the search tool (e.g. "W07").
     source_id: str
 
-    tech_id: str | None = None             # "kivi" / "infinigen"; None = both/common
+    # "kivi" / "infinigen"; None = both/common. RAG payload의 "common"과
+    # 대소문자 차이("KIVI")는 아래 validator가 정규화한다.
+    tech_id: str | None = None
     source_type: SourceType | None = None
     title: str | None = None
     url: str | None = None
@@ -56,6 +58,19 @@ class Evidence(BaseModel):
     stance: Stance | None = None           # set by the Judge, not by the agent itself
     independent: bool | None = None        # False for the tech's own authors/org
     scope_level: Literal["tech", "family"] | None = None  # named tech vs. tech family
+
+    @field_validator("tech_id", mode="before")
+    @classmethod
+    def _normalize_tech_id(cls, v):
+        if isinstance(v, str):
+            v = v.strip().lower()
+            return None if v in ("", "common") else v
+        return v
+
+    @field_validator("source_type", mode="before")
+    @classmethod
+    def _normalize_source_type(cls, v):
+        return v.strip().lower() if isinstance(v, str) else v
 
 
 class TechProfile(BaseModel):

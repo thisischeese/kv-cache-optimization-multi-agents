@@ -392,10 +392,10 @@ START → setup → tech_research
 | 필드 | 값 | 누가 채우나 |
 | --- | --- | --- |
 | `source_id` | 문서: `sources.json`의 `id`(예: `kivi`). 웹: 검색 도구가 붙인 ID(예: `W07`) | 코드 |
-| `tech_id` | `kivi` / `infinigen`. 두 기술 공통이면 `None` | 코드 |
+| `tech_id` | `kivi` / `infinigen`. 두 기술 공통이면 `None` (RAG payload의 `common`·대문자 값은 스키마가 자동 정규화) | 코드 |
 | `page` | 문서 쪽 번호 (웹이면 `None`) | 코드 |
 | `title`, `url`, `site`, `published_date` | 웹 근거의 서지 정보. REFERENCE에 그대로 쓰인다 | 코드 |
-| `source_type` | `paper` / `followup` / `benchmark` / `survey` / `framework_doc` / `company` / `news` / `community` / `other` | 코드 |
+| `source_type` | `core` / `followup` / `benchmark` / `survey` / `framework_doc` / `company` / `news` / `community` / `other` | 코드 |
 | `independent` | 원 논문·저자 본인·개발 기관 자료면 `False` | 코드 |
 | `stance` | `positive` / `critical` / `neutral` | 별도 Judge |
 | `scope_level` | 기술명이 명시된 근거면 `tech`, 기술 계열 일반이면 `family` (TRL 판정에 사용) | 코드 |

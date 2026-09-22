@@ -57,6 +57,26 @@ def test_rules_report_what_is_missing_per_tech() -> None:
     assert "인용 ID 없음: ghost" in missing
 
 
+def test_rag_payload_labels_are_normalized() -> None:
+    # RAG payload(노션 2.3)는 tech_id="common"/"KIVI", doc_type="core"를 쓴다.
+    common = Evidence(evidence_id="c1", claim="c", source_id="survey_tmlr",
+                      tech_id="common", source_type="survey")
+    core = Evidence(evidence_id="k1", claim="c", source_id="kivi",
+                    tech_id="KIVI", source_type="core")
+    assert common.tech_id is None
+    assert (core.tech_id, core.source_type) == ("kivi", "core")
+
+
+def test_common_evidence_counts_for_both_techs() -> None:
+    evidence = [
+        _ev("e1", "common", independent=True, stance="critical"),
+        _ev("e2", "kivi", independent=False, stance="positive"),
+        _ev("e3", "infinigen", independent=False, stance="positive"),
+    ]
+    result = PerspectiveResult(perspective="market", evidence=evidence)
+    assert check_perspective("market", result).passed
+
+
 def test_trl_requires_tech_unit_evidence_but_not_critical() -> None:
     evidence = _good_evidence()
     result = PerspectiveResult(perspective="trl", evidence=evidence)
