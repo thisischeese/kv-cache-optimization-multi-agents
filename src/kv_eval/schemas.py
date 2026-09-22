@@ -22,8 +22,14 @@ class Evidence(BaseModel):
     evidence_id: str
     claim: str
     source_id: str
-    # TODO: add stance, quote, page/span locator once RAG retrieval is wired in.
 
+    source_type: str = "unknown"
+    title: str | None = None
+    url: str | None = None
+    quote: str | None = None
+    page: int | None = None
+    tech_id: str | None = None
+    doc_type: str | None = None
 
 class TechProfile(BaseModel):
     tech_id: str
