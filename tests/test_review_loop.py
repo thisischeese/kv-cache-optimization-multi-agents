@@ -123,7 +123,7 @@ def test_report_renders_optional_profile_and_trl_fields(monkeypatch) -> None:
     def rich_trl(state):
         return {"trl_eval": TRLResult(levels={"kivi": TRLLevel(level=5, lower_bound=4, confidence="medium")})}
 
-    monkeypatch.setattr(graph_module, "tech_research_agent", rich_profiles)
+    monkeypatch.setattr(graph_module, "tech_research_target_node", rich_profiles)
     monkeypatch.setattr(graph_module, "trl_agent", rich_trl)
     final = graph_module.build_graph().invoke({})
     md = final["report_md"]

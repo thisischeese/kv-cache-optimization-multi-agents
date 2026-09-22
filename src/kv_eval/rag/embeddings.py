@@ -6,6 +6,7 @@ back to OpenAI or to another local embedding model silently.
 
 from functools import lru_cache
 import os
+import threading
 from typing import Protocol
 
 from kv_eval.config import DEFAULT_EMBEDDING_MODEL, embedding_device, embedding_model_name
@@ -46,20 +47,31 @@ def _load_sentence_transformer(model_name: str, device: str) -> Embedder:
         ) from exc
 
 
+# Graph nodes run in parallel threads. Loading or calling one torch model from
+# several threads at once hung the full run on macOS, so both are serialized.
+_EMBED_LOCK = threading.RLock()
+
+
 @lru_cache(maxsize=1)
-def get_embedder() -> Embedder:
+def _cached_embedder() -> Embedder:
     return _load_sentence_transformer(embedding_model_name(), embedding_device())
+
+
+def get_embedder() -> Embedder:
+    with _EMBED_LOCK:
+        return _cached_embedder()
 
 
 def _encode(texts: list[str], prompt_name: str | None = None) -> list[list[float]]:
     if not texts:
         return []
-    vectors = get_embedder().encode(
-        texts,
-        prompt_name=prompt_name,
-        normalize_embeddings=True,
-        convert_to_numpy=True,
-    )
+    with _EMBED_LOCK:
+        vectors = get_embedder().encode(
+            texts,
+            prompt_name=prompt_name,
+            normalize_embeddings=True,
+            convert_to_numpy=True,
+        )
     return [vector.tolist() for vector in vectors]
 
 

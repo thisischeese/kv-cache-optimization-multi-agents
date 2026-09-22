@@ -9,7 +9,7 @@ from kv_eval.agents.market import market_agent
 from kv_eval.agents.report import report_agent
 from kv_eval.agents.stakeholder import stakeholder_agent
 from kv_eval.agents.synthesis import synthesis_agent
-from kv_eval.agents.tech_research import tech_research_agent
+from kv_eval.agents.tech_research import tech_research_target_node
 from kv_eval.agents.trl import trl_agent
 from kv_eval.nodes.evidence_check import evidence_check_node, route_after_evidence_check
 from kv_eval.nodes.review import route_after_review, review_node
@@ -33,7 +33,7 @@ def build_graph() -> CompiledStateGraph:
     builder = StateGraph(MainState)
 
     builder.add_node("setup", setup_node)
-    builder.add_node("tech_research", tech_research_agent)
+    builder.add_node("tech_research", tech_research_target_node)
     builder.add_node("trl", trl_agent)
     builder.add_node("market", market_agent)
     builder.add_node("stakeholder", stakeholder_agent)
