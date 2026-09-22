@@ -26,7 +26,6 @@ from kv_eval.subgraphs.tech_research.prompts import (
 from kv_eval.subgraphs.tech_research.retriever import Retriever
 from kv_eval.subgraphs.tech_research.state import (
     ITEM_KEYS,
-    NOT_FOUND_TEXT,
     Citation,
     CitedTechProfile,
     ItemState,
@@ -115,11 +114,18 @@ def _fallback_queries(tech: Tech, spec: ItemSpec) -> list[str]:
 _PASSAGE_REF = re.compile(r"\s*\([^()]*passage[^()]*\)", re.IGNORECASE)
 _BARE_REF = re.compile(r"\s*\((?:\d+\s*(?:,|and)\s*)*\d+\)")
 _PAGE_REF = re.compile(r"\s*\((?:pp?\.|pages?)\s*\d+(?:\s*[-,]\s*\d+)*\)", re.IGNORECASE)
+# ", as stated on page 1" / "in Table 3 on page 8": the page belongs in the citation.
+_PAGE_MENTION = re.compile(
+    r",?\s*(?:as\s+(?:stated|shown|reported|noted|described|presented|given|listed|seen)\s+)?"
+    r"(?:on|in)\s+(?:page|p\.)\s*\d+",
+    re.IGNORECASE,
+)
 
 
 def _clean_point_text(text: str) -> str:
-    for pattern in (_PASSAGE_REF, _BARE_REF, _PAGE_REF):
+    for pattern in (_PASSAGE_REF, _BARE_REF, _PAGE_REF, _PAGE_MENTION):
         text = pattern.sub("", text)
+    text = re.sub(r"\s+([.,;])", r"\1", text)  # no space left before punctuation
     return " ".join(text.split())
 
 
@@ -130,6 +136,42 @@ def _unsupported_numbers(text: str, sources: list[RetrievedChunk]) -> list[str]:
     """Numbers in an extracted point that appear in none of its cited passages."""
     available = {n for chunk in sources for n in _NUMBER.findall(chunk.text)}
     return [n for n in dict.fromkeys(_NUMBER.findall(text)) if n not in available]
+
+
+_UNIT_NUMBER = re.compile(r"^(\d+(?:\.\d+)?)[×x%]?$")
+_RANGE_TOKEN = re.compile(r"[\d.×x%∼~–-]+")
+
+
+def _standalone_numbers(token: str) -> list[str]:
+    """Numbers a token states on its own: "63.78", "4×", "2.35×∼3.47×", "(0.3)".
+
+    Numbers inside identifiers such as "Llama-2-7B", "A100" or "2bit" are not
+    returned, so a model name never looks like a table value.
+    """
+    token = token.strip("()[]{},.;:!?\"'")
+    parts = re.split(r"[∼~–-]", token) if _RANGE_TOKEN.fullmatch(token) else [token]
+    return [m.group(1) for part in parts if (m := _UNIT_NUMBER.match(part))]
+
+
+def _table_only_numbers(text: str, sources: list[RetrievedChunk], radius: int = 6) -> list[str]:
+    """Standalone numbers of a point that its cited passages state only inside tables.
+
+    Extracted tables are flattened, and a row label such as a model name can land
+    after its rows, so an LLM (the verify step included) reliably pairs these
+    numbers with the wrong model. A number counts as table-only when every
+    standalone occurrence has at least half numbers among its neighbouring tokens.
+    """
+    wanted = list(dict.fromkeys(n for token in text.split() for n in _standalone_numbers(token)))
+    densities: dict[str, list[float]] = {n: [] for n in wanted}
+    for chunk in sources:
+        tokens = chunk.text.split()
+        numeric = [bool(_standalone_numbers(t)) for t in tokens]
+        for index, token in enumerate(tokens):
+            for number in _standalone_numbers(token):
+                if number in densities:
+                    window = numeric[max(0, index - radius) : index + radius + 1]
+                    densities[number].append(sum(window) / len(window))
+    return [n for n, values in densities.items() if values and min(values) >= 0.5]
 
 
 def _valid_numbers(numbers: list[int], limit: int) -> list[int]:
@@ -247,6 +289,10 @@ def make_extract(deps: TechResearchDeps):
             if missing:
                 rejected.append(f"numbers not in cited passages {missing}: {text}")
                 continue
+            table_only = _table_only_numbers(text, sources)
+            if table_only:
+                rejected.append(f"numbers only in a flattened table {table_only}: {text}")
+                continue
             points.append(SectionPoint(text=text, citations=[_citation(c) for c in sources]))
 
         return {"candidates": points, "rejected": rejected}
@@ -306,17 +352,34 @@ def fan_out_items(state: TechState) -> list[Send]:
 
 
 def assemble_profile(state: TechState) -> TechState:
+    """Fill the shared TechProfile fields from the cited sections.
+
+    Items not found in the paper stay empty, following the shared schema;
+    overview and mechanism are required strings, so they carry NOT_FOUND_TEXT.
+    """
     tech = state["target"]
     found = state.get("sections", {})
     sections = {
         key: found.get(key) or ProfileSection(item=key, status="not_found") for key in ITEM_KEYS
     }
-    limitation_points = sections["limitations"].points
+
+    def text(key: str) -> str:
+        return sections[key].render() if sections[key].points else ""
+
+    def items(key: str) -> list[str]:
+        return [point.render() for point in sections[key].points]
+
+    labels = [c.label for key in ITEM_KEYS for c in sections[key].citations]
     profile = CitedTechProfile(
         tech_id=tech.tech_id,
         overview=sections["overview"].render(),
         mechanism=sections["mechanism"].render(),
-        limitations=[point.render() for point in limitation_points] or [NOT_FOUND_TEXT],
+        limitations=items("limitations"),
+        experiment_setup=text("experiment_setup"),
+        reported_results=items("reported_results"),
+        scope=text("scope"),
+        competing_views=items("competing_views"),
+        citations=list(dict.fromkeys(labels)),
         sections=sections,
     )
     return {"tech_profiles": {tech.tech_id: profile}}
