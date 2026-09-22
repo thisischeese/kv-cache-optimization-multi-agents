@@ -11,6 +11,22 @@ DOC_TYPE_PURPOSES: dict[str, str] = {
     "survey": "기술의 연구 분야 내 위치와 비교 기준 확인",
 }
 
+TRL_RAG_DOC_TYPES: list[str] = [
+    "core",
+    "followup",
+    "benchmark",
+]
+
+def build_trl_rag_queries(tech_name: str) -> list[str]:
+    """TRL 1에서 5 평가를 위한 RAG 질의를 생성한다."""
+
+    return [
+        f"{tech_name} technical principle and mechanism",
+        f"{tech_name} experimental setup and reported results",
+        f"{tech_name} limitations and follow-up improvements",
+        f"{tech_name} external benchmark performance",
+    ]
+
 TRL_EVIDENCE_RULES: dict[str, dict[str, object]] = {
     "trl_1_5": {
         "source": "rag",
