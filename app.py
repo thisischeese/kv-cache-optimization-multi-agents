@@ -9,6 +9,8 @@ from kv_eval.config import (
     PERSPECTIVES,
     REPORT_PATH,
     embedding_model_name,
+    llm_enabled,
+    llm_model,
     openai_api_key,
 )
 from kv_eval.graph import graph
@@ -41,7 +43,7 @@ def main() -> None:
     print("Graph execution completed.")
     print(f"OPENAI_API_KEY: {'loaded' if openai_api_key() else 'not set'}")
     print(f"Embedding model: {embedding_model_name()}")
-    print("All agents are running on mock data; no API call was made.")
+    print(f"LLM (synthesis): {llm_model() if llm_enabled() else 'off (fallback)'}")
     print(f"Report: {REPORT_PATH.relative_to(OUTPUT_DIR.parent)}")
     print(f"PDF: {PDF_PATH.relative_to(OUTPUT_DIR.parent)}")
     print()

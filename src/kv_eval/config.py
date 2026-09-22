@@ -65,3 +65,15 @@ PDF_FONT_CANDIDATES: tuple[str, ...] = (
 
 def pdf_font_path() -> str | None:
     return os.getenv("PDF_FONT_PATH")
+
+# --- LLM ---
+DEFAULT_LLM_MODEL = "gpt-4.1-mini"
+
+
+def llm_model() -> str:
+    return os.getenv("LLM_MODEL", DEFAULT_LLM_MODEL)
+
+
+def llm_enabled() -> bool:
+    """LLM calls need a key and are always off in tests (KV_EVAL_OFFLINE=1)."""
+    return bool(openai_api_key()) and os.getenv("KV_EVAL_OFFLINE") != "1"
