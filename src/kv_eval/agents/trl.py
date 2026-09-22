@@ -1,5 +1,12 @@
 """TRL 평가 Agent."""
 
+import re
+from pathlib import Path
+from typing import Literal
+from urllib.parse import urlparse
+
+from pydantic import BaseModel
+
 from kv_eval.agents.trl_queries import (
     TRL6_FRAMEWORKS,
     TRL_RAG_DOC_TYPES,
@@ -13,9 +20,103 @@ from kv_eval.schemas import Evidence, TRLLevel, TRLResult
 from kv_eval.state import MainState
 from kv_eval.tools import WebEvidence, perplexity_search, search_web
 from kv_eval.tools.web_search import web_source_id
-from kv_eval.config import perplexity_api_key
-import re
-from urllib.parse import urlparse
+from kv_eval.config import llm_enabled, perplexity_api_key
+
+
+_TRL_PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "trl.md"
+
+
+class _LLMTRLAssessment(BaseModel):
+    """TRL Judge의 단계별 구조화 출력."""
+
+    trl_1: bool
+    trl_2: bool
+    trl_3: bool
+    trl_4: bool
+    trl_5: bool
+    trl_6: bool
+    trl_7: bool
+    trl_8: bool
+    trl_9: bool
+    confidence: Literal["high", "medium", "low"]
+    basis: str
+    public_gap: str
+
+
+def _load_trl_prompt() -> str:
+    """TRL 평가 기준 Markdown을 읽는다."""
+
+    return _TRL_PROMPT_PATH.read_text(encoding="utf-8")
+
+
+def _build_trl_prompt(
+    tech_name: str,
+    evidence: list[Evidence],
+) -> str:
+    """TRL 평가 기준과 수집 근거를 Judge 입력으로 구성한다."""
+
+    evidence_block = "\n".join(
+        (
+            f"- [{item.evidence_id}] "
+            f"type={item.source_type or 'unknown'}, "
+            f"site={item.site or 'unknown'}, "
+            f"page={item.page or '-'}\n"
+            f"  title={item.title or '-'}\n"
+            f"  quote={item.quote or '-'}\n"
+            f"  url={item.url or '-'}"
+        )
+        for item in evidence
+    )
+
+    return (
+        f"{_load_trl_prompt()}\n\n"
+        f"## 평가 대상\n{tech_name}\n\n"
+        "## 수집된 공개 근거\n"
+        f"{evidence_block or '(근거 없음)'}\n\n"
+        "## Judge 규칙\n"
+        "근거에 없는 단계는 false로 판정한다. "
+        "높은 단계가 충족되려면 낮은 단계도 연속해서 충족되어야 한다. "
+        "각 단계의 판정은 제공된 Evidence만 사용한다."
+    )
+
+
+def _invoke_trl_llm(prompt: str) -> _LLMTRLAssessment:
+    """TRL 단계 판정을 위해 구조화된 LLM 출력을 호출한다."""
+
+    from kv_eval.llm import chat_model
+
+    return chat_model().with_structured_output(_LLMTRLAssessment).invoke(prompt)
+
+
+def _assessment_to_level(
+    assessment: _LLMTRLAssessment,
+) -> TRLLevel:
+    """단계별 Judge 결과를 기존 TRLLevel 형식으로 변환한다."""
+
+    stage_met = {
+        level: getattr(assessment, f"trl_{level}")
+        for level in range(1, 10)
+    }
+    met_levels = [
+        level
+        for level, met in stage_met.items()
+        if met
+    ]
+    level = max(met_levels) if met_levels else None
+
+    lower_bound = 0
+    for stage in range(1, 10):
+        if not stage_met[stage]:
+            break
+        lower_bound = stage
+
+    return TRLLevel(
+        level=level,
+        lower_bound=lower_bound or None,
+        confidence=assessment.confidence,
+        basis=assessment.basis,
+        public_gap=assessment.public_gap,
+    )
 
 
 _THIRD_PARTY_HOSTS = {
@@ -235,7 +336,8 @@ def trl_agent(state: MainState) -> MainState:
             ]
             evidence.extend(web_evidence)
 
-        levels[tech.tech_id] = _evaluate_trl_level(
+        levels[tech.tech_id] = _judge_trl_level(
+            tech_name=tech.name,
             evidence=rag_evidence + web_evidence,
             tech_id=tech.tech_id,
         )
@@ -356,3 +458,23 @@ def _evaluate_trl_level(
             "확인되지 않았다."
         ),
     )
+
+
+def _judge_trl_level(
+    tech_name: str,
+    evidence: list[Evidence],
+    tech_id: str,
+) -> TRLLevel:
+    """LLM Judge를 사용하고 실패하면 규칙 기반 판정으로 fallback한다."""
+
+    if not llm_enabled() or not evidence:
+        return _evaluate_trl_level(evidence, tech_id)
+
+    try:
+        assessment = _invoke_trl_llm(
+            _build_trl_prompt(tech_name, evidence)
+        )
+    except Exception:
+        return _evaluate_trl_level(evidence, tech_id)
+
+    return _assessment_to_level(assessment)

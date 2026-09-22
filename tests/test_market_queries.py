@@ -24,6 +24,8 @@ def test_market_queries_cover_all_criteria() -> None:
 
     assert all("KIVI" in query["query"] for query in queries)
     assert all(query["domains"] == [] for query in queries)
+    assert all("KV cache" in query["query"] for query in queries)
+    assert all("LLM inference" in query["query"] for query in queries)
 
 
 def test_market_queries_include_required_evaluation_keywords() -> None:

@@ -24,32 +24,32 @@ def build_market_web_queries(tech_name: str) -> list[MarketWebQuery]:
         {
             "criterion": "demand_growth",
             "query": (
-                f"{tech_name} KV cache optimization market demand "
-                "growth investment cloud LLM inference"
+                f"{tech_name} KV cache LLM inference market demand "
+                "growth investment cloud serving"
             ),
             "domains": [],
         },
         {
             "criterion": "adoption",
             "query": (
-                f"{tech_name} commercial adoption production deployment "
-                "cloud service product"
+                f"{tech_name} KV cache LLM inference commercial adoption "
+                "production deployment cloud service product"
             ),
             "domains": [],
         },
         {
             "criterion": "ecosystem",
             "query": (
-                f"{tech_name} open source implementation framework support "
-                "LLM serving ecosystem"
+                f"{tech_name} KV cache LLM inference open source "
+                "implementation framework support serving ecosystem"
             ),
             "domains": [],
         },
         {
             "criterion": "barriers",
             "query": (
-                f"{tech_name} adoption barriers cost compatibility "
-                "operational complexity infrastructure"
+                f"{tech_name} KV cache LLM inference adoption barriers "
+                "cost compatibility operational complexity infrastructure"
             ),
             "domains": [],
         },
