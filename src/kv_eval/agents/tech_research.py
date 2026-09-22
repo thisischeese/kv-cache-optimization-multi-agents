@@ -14,6 +14,9 @@ Mode is chosen by ``TECH_RESEARCH_MODE`` (default ``auto``):
     auto  rag when OPENAI_API_KEY looks real and a retriever is available,
           otherwise mock with a warning
 
+Retriever: Qdrant (kv_eval.rag.retriever) when QDRANT_ENDPOINT and QDRANT_API_KEY
+are set, otherwise an offline BM25 retriever over the same ingestion chunks.
+
 TODO(integration): move the Send fan-out from this node to the main graph
 (setup -> Send(tech_research) per target) and add a dict-merge reducer to
 MainState.tech_profiles. ``tech_research_target_node`` is the node for that.
@@ -86,8 +89,8 @@ def build_default_deps() -> TechResearchDeps:
     retriever, backend = resolve_retriever()
     if retriever is None:
         raise RuntimeError(
-            "No retriever available. Wait for kv_eval.rag.retriever (Qdrant) or run "
-            "with the temporary local fallback: uv run --with pypdf python app.py"
+            "No retriever available: set QDRANT_ENDPOINT and QDRANT_API_KEY, or keep "
+            "data/manifest.example.json and data/papers for the offline retriever."
         )
     model = os.getenv("TECH_RESEARCH_MODEL", DEFAULT_MODEL)
     judge_model = os.getenv("TECH_RESEARCH_JUDGE_MODEL", model)
@@ -115,8 +118,8 @@ def resolve_mode() -> str:
         return "mock"
     if resolve_retriever()[0] is None:
         logger.warning(
-            "tech_research: no retriever (Qdrant retriever not merged, pypdf not "
-            "installed), using mock profiles"
+            "tech_research: no retriever (Qdrant not configured, offline index "
+            "unavailable), using mock profiles"
         )
         return "mock"
     return "rag"

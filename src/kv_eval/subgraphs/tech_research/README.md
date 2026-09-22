@@ -31,14 +31,14 @@ item graph       generate_query -> retrieve -> grade
 | `prompts.py` | 항목별 추출 지시와 프롬프트 |
 | `nodes.py` | 노드, LLM 출력 스키마, `TechResearchDeps` |
 | `graph.py` | 세 단계 그래프 조립 |
-| `retriever.py` | 리트리버 계약, 1번 담당 `retrieve()` 어댑터, 임시 로컬 PDF 검색기 |
+| `retriever.py` | 리트리버 계약, 1번 담당 `retrieve()`(Qdrant) 어댑터, 오프라인 검색기 |
 | `../../agents/tech_research.py` | 메인 그래프 노드. 실행 모드 선택 |
 
 ### 출처를 지어내지 못하게 한 장치
 
 - LLM은 질의, 청크 번호, 문장만 씁니다. `doc_id`, `page`, `chunk_id`는 코드가 청크 메타데이터로 채웁니다.
 - 보여 주지 않은 청크 번호를 인용하거나 인용이 없는 문장은 버립니다.
-- 문장의 숫자가 인용한 청크에 없으면 버립니다(예: 원문 96.9%를 "over 90%"로 쓴 경우).
+- 문장의 숫자가 인용한 청크에 없으면 버립니다. 예: 원문 96.9%를 "over 90%"로 쓴 경우, 원문의 "batch size from 4 to 20"을 "from 1 to 20"으로 쓴 경우.
 - `verify` 단계에서 LLM이 문장을 인용 원문과 다시 대조해, 뒷받침되지 않는 문장을 버립니다.
 - 버린 문장은 이유와 함께 `ProfileSection.rejected`에 남습니다.
 - 기술 조사는 원 논문(`doc_type=core`)만 검색하므로, 추출한 성능 수치는 모두 개발 주체의 자체 보고입니다.
@@ -46,9 +46,8 @@ item graph       generate_query -> retrieve -> grade
 ## 실행
 
 ```bash
-uv run pytest tests/test_tech_research.py            # 오프라인 테스트 (가짜 LLM, 가짜 리트리버)
-uv run --with pypdf pytest                           # 로컬 PDF 검색기 테스트까지
-uv run --with pypdf python app.py                    # 실제 LLM + 임시 로컬 PDF 검색기
+uv run pytest tests/test_tech_research.py   # 오프라인 테스트 (가짜 LLM, 가짜 리트리버)
+uv run python app.py                        # 실제 LLM + Qdrant
 ```
 
 | 환경 변수 | 기본값 | 설명 |
@@ -58,18 +57,27 @@ uv run --with pypdf python app.py                    # 실제 LLM + 임시 로�
 | `TECH_RESEARCH_JUDGE_MODEL` | 위와 같음 | `verify` 단계 모델 |
 
 리트리버는 자동으로 고릅니다.
-- `kv_eval.rag.retriever`(1번 담당, Qdrant)가 있으면 그것을 씁니다.
-- 없고 `pypdf`가 설치돼 있으면 임시 로컬 PDF 검색기(BM25)를 씁니다.
-- 둘 다 없으면 `auto` 모드는 mock으로 돌아갑니다.
+- **Qdrant:** `QDRANT_ENDPOINT`와 `QDRANT_API_KEY`가 있으면 1번 담당의 `kv_eval.rag.retriever.retrieve()`를 씁니다. 결과의 `chunk_index`로 `chunk_id`(`{doc_id}:p{page}:c{chunk_index}`)를 만들며, 이는 적재 때 Qdrant 점 ID를 만드는 조합과 같습니다.
+- **오프라인:** Qdrant 설정이 없으면 1번 담당의 적재 파이프라인(로더, 머리글과 바닥글 제거, 분할기)을 `data/papers`에 그대로 돌리고 BM25로 순위를 매깁니다. 청크, 쪽, `chunk_id`는 Qdrant와 같고 순위만 다릅니다.
+- **mock:** 둘 다 없으면 `auto` 모드는 mock으로 돌아갑니다.
 
-`pypdf`는 임시 검색기에만 쓰므로 프로젝트 의존성에 넣지 않았습니다.
+검색 호출은 직렬화합니다. 항목들이 병렬 스레드로 돌 때, 1번 담당의 `retrieve()`가 GPU(MPS/CUDA)에 올린 임베딩 모델 하나를 공유하기 때문입니다.
 
-## 실행 기록 (2026-09-22, gpt-4.1-mini, 로컬 PDF 검색기)
+## 실행 기록 (2026-09-22, gpt-4.1-mini, Qdrant)
 
 - 두 기술 모두 7개 항목이 전부 채워졌습니다.
-- LLM 호출은 56회(항목당 질의, 판정, 추출, 검증 각 1회)이고, 병렬 실행으로 약 7초 걸렸습니다.
-- 모든 인용의 `chunk_id`가 검색 색인에 실제로 있고, `doc_id`와 `page`가 색인과 일치함을 코드로 확인했습니다.
-- 재작성 루프는 실제 실행에서도 돌았습니다. 한계 항목에서 질의를 2~3회 바꿨습니다.
+- 호출 수와 시간:
+  - LLM 56회(항목당 질의, 판정, 추출, 검증 각 1회)
+  - Qdrant 검색 14회
+  - 약 40초(첫 실행에는 임베딩 모델 1.1GB 내려받기가 더해짐)
+- 코드로 확인한 것:
+  - 모든 인용의 `chunk_id`가 실제 검색 결과에 있었습니다.
+  - `doc_id`, `page`, `doc_type`이 일치하고, 원 논문(`core`) 밖의 인용이 없습니다.
+  - Qdrant가 돌려준 청크 텍스트가 오프라인 색인과 한 글자도 다르지 않습니다.
+- 버린 문장은 2건이었고, 원문과 대조해 보니 둘 다 정당한 기각이었습니다.
+  - 원문에 없는 배치 크기 "1"
+  - 원문에 없는 "implies" 추론
+- 재작성 루프는 오프라인 검색기 실행에서 실제로 돌았습니다(한계 항목에서 질의 2~3회). Qdrant 실행에서는 첫 질의로 모두 충분했습니다.
 
 ## 다른 담당에게 요청할 것
 
@@ -100,13 +108,13 @@ uv run --with pypdf python app.py                    # 실제 LLM + 임시 로�
 
 **1번 (RAG / Qdrant)**
 
-1. `retrieve()` 결과에 `chunk_id`를 넣어 주세요. 없으면 어댑터가 텍스트 해시로 만들지만, 적재 시점의 고정 ID가 낫습니다.
-2. 원 논문의 `doc_type`: 설계서는 `core`, `sources.json`은 `role: source`입니다. 기술 조사는 `doc_types=["core"]`로 호출합니다.
-3. `tech_id`는 `kivi`, `infinigen`(소문자)로 호출합니다. 결과의 `tech_id` 비교는 대소문자를 구분하지 않습니다.
-4. `pypdf` 추출에서는 KIVI p.6의 R/2(분수)가 "R 2"로 뭉개집니다. 레이아웃 기반 추출에서 수식이 살아나는지 확인 부탁드립니다.
+1. `RetrievedChunk`에 `chunk_id`가 없어 어댑터가 `{doc_id}:p{page}:c{chunk_index}`로 만듭니다. 적재 때의 점 ID와 같은 조합이지만, 필드로 넣어 주시면 이 규칙을 양쪽에서 따로 관리하지 않아도 됩니다.
+2. 분수 수식이 추출에서 뭉개집니다. KIVI p.6의 "window size is expected to be R/2"가 "R 2"로 들어가 있어, LLM이 R^2로 잘못 옮긴 적이 있습니다. 한계로 기록만 해도 됩니다.
+3. `kv_eval.ingestion.loader`가 `import fitz`를 써서 PyMuPDF 폐기 예정 경고가 나옵니다(`import pymupdf` 권장). 동작에는 문제없습니다.
 
 ## 알려진 한계
 
-- **임시 로컬 검색기:** 단어 일치(BM25) 검색이라 의미 검색보다 재현율이 낮고, PDF 수식과 표가 깨질 수 있습니다.
+- **오프라인 검색기:** 단어 일치(BM25)라 Qdrant 의미 검색보다 재현율이 낮습니다. 오프라인 개발과 테스트용입니다.
+- **수식과 표:** PDF 추출에서 분수 같은 수식과 표 구조가 깨질 수 있습니다.
 - **해석 표현:** `verify`도 LLM이라 "indicating a memory overhead"처럼 원문 사실을 한계로 풀어 쓴 표현은 남을 수 있습니다. 숫자는 코드로 검사하므로 원문에 없는 수치는 남지 않습니다.
 - **출력 언어:** 원문이 영어라 추출 문장도 영어입니다. 한국어 서술은 보고서 단계에서 합니다.

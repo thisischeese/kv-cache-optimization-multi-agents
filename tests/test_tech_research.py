@@ -268,6 +268,7 @@ def test_passage_numbers_are_stripped_from_point_text() -> None:
                 points=[
                     PointOut(text="KIVI cuts memory (passages 1, 2).", passage_numbers=[1, 2]),
                     PointOut(text="Batch grows (passage_numbers:[2]).", passage_numbers=[2]),
+                    PointOut(text="Keys are skewed offline (1,2).", passage_numbers=[1, 2]),
                 ]
             )
         return default_handler(schema, human)
@@ -275,7 +276,11 @@ def test_passage_numbers_are_stripped_from_point_text() -> None:
     deps, _ = make_deps(handler)
     points = run_tech_research(TARGETS[:1], deps)["kivi"].sections["overview"].points
 
-    assert [point.text for point in points] == ["KIVI cuts memory.", "Batch grows."]
+    assert [point.text for point in points] == [
+        "KIVI cuts memory.",
+        "Batch grows.",
+        "Keys are skewed offline.",
+    ]
     assert [c.page for c in points[0].citations] == [2, 3]
 
 
@@ -308,24 +313,41 @@ def test_agent_node_falls_back_to_mock(monkeypatch) -> None:
     assert profiles["kivi"].overview.startswith("[MOCK]")
 
 
-def test_resolve_retriever_works_before_the_rag_package_exists() -> None:
+def test_resolve_retriever_uses_offline_index_without_qdrant_credentials(monkeypatch) -> None:
     from kv_eval.subgraphs.tech_research import resolve_retriever
 
+    monkeypatch.delenv("QDRANT_ENDPOINT", raising=False)
+    monkeypatch.delenv("QDRANT_API_KEY", raising=False)
     retriever, backend = resolve_retriever()
 
-    assert backend in {"qdrant", "local-pdf", "none"}
-    assert (retriever is None) == (backend == "none")
+    assert backend == "local"
+    assert retriever is not None
 
 
-def test_rag_retriever_adapter_fills_missing_chunk_id() -> None:
+def test_rag_retriever_adapter_builds_chunk_id_from_chunk_index() -> None:
     from kv_eval.subgraphs.tech_research.retriever import adapt_rag_retriever
 
     def owner_retrieve(query, tech_id=None, doc_types=None, top_k=5):
-        return [{"text": "t", "doc_id": "kivi", "page": 3, "tech_id": "KIVI", "doc_type": "core"}]
+        return [
+            {
+                "text": "t", "doc_id": "kivi", "page": 3, "tech_id": "kivi", "camp": "SW",
+                "doc_type": "core", "chunk_index": 1, "score": 0.8,
+            }
+        ]  # fmt: skip
 
     chunk = adapt_rag_retriever(owner_retrieve)("q", tech_id="kivi")[0]
 
-    assert chunk.chunk_id.startswith("kivi:p3:")
+    assert chunk.chunk_id == "kivi:p3:c1"
+    assert chunk.score == 0.8
+
+
+def test_rag_retriever_adapter_falls_back_to_text_hash() -> None:
+    from kv_eval.subgraphs.tech_research.retriever import adapt_rag_retriever
+
+    def owner_retrieve(query, tech_id=None, doc_types=None, top_k=5):
+        return [{"text": "t", "doc_id": "kivi", "page": 3}]
+
+    assert adapt_rag_retriever(owner_retrieve)("q")[0].chunk_id.startswith("kivi:p3:")
 
 
 class _ParentState(TypedDict, total=False):
@@ -369,13 +391,12 @@ def test_target_node_merges_under_main_graph_send_in_rag_mode(monkeypatch) -> No
     assert all(isinstance(profile, CitedTechProfile) for profile in profiles.values())
 
 
-def test_local_pdf_retriever_returns_page_cited_core_chunks() -> None:
-    pytest.importorskip("pypdf")
+def test_offline_retriever_uses_ingestion_chunks_and_filters() -> None:
     from kv_eval.subgraphs.tech_research import LocalPdfRetriever
 
-    retriever = LocalPdfRetriever.from_papers()
+    retriever = LocalPdfRetriever.from_manifest(doc_ids={"kivi", "infinigen", "kvtuner"})
     chunks = retriever(
-        "KIVI key cache per-channel quantization", tech_id="kivi", doc_types=["core"], top_k=5
+        "KIVI key cache per-channel quantization", tech_id="kivi", doc_types=["core"]
     )
 
     assert chunks
@@ -383,5 +404,8 @@ def test_local_pdf_retriever_returns_page_cited_core_chunks() -> None:
     assert all(1 <= chunk.page <= 15 for chunk in chunks)
     assert all(chunk.chunk_id.startswith(f"kivi:p{chunk.page}:c") for chunk in chunks)
 
-    other = retriever("InfiniGen prefetch", tech_id="infinigen", doc_types=["core"], top_k=5)
+    followups = retriever("mixed precision", tech_id="kivi", doc_types=["followup"])
+    assert followups and all(chunk.doc_id == "kvtuner" for chunk in followups)
+
+    other = retriever("InfiniGen prefetch", tech_id="infinigen", doc_types=["core"])
     assert other and all(chunk.doc_id == "infinigen" for chunk in other)

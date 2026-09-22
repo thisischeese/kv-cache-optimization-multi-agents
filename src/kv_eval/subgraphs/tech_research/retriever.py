@@ -1,11 +1,12 @@
-"""Retriever contract for the tech research subgraph and a temporary fallback.
+"""Retriever contract for the tech research subgraph.
 
-The RAG owner provides ``kv_eval.rag.retriever.retrieve`` (Qdrant). Until that
-module exists, ``LocalPdfRetriever`` gives page-cited lexical (BM25) retrieval
-straight from ``data/papers``. It is a stopgap: no layout-aware extraction, no
-embeddings. It needs ``pypdf``, which is intentionally not a project dependency:
+Primary backend: ``kv_eval.rag.retriever.retrieve`` (Qdrant, owned by the RAG
+role), used when QDRANT_ENDPOINT and QDRANT_API_KEY are set.
 
-    uv run --with pypdf python app.py
+Offline backend: ``LocalPdfRetriever`` runs the RAG owner's own ingestion
+(layout-aware loader, header/footer removal, page-preserving splitter) on
+``data/papers`` and scores chunks with BM25. Chunks, pages and chunk ids are
+therefore identical to the Qdrant collection; only the ranking differs.
 """
 
 import hashlib
@@ -15,22 +16,21 @@ import json
 import logging
 import math
 import re
+import threading
 from collections import Counter
 from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Protocol
 
-from kv_eval.config import PROJECT_ROOT
+from kv_eval.config import PROJECT_ROOT, qdrant_api_key, qdrant_endpoint
 from kv_eval.subgraphs.tech_research.state import RetrievedChunk
 
 logger = logging.getLogger(__name__)
 
 PAPERS_DIR = PROJECT_ROOT / "data" / "papers"
+MANIFEST_PATH = PROJECT_ROOT / "data" / "manifest.example.json"
 RAG_RETRIEVER_MODULE = "kv_eval.rag.retriever"
-
-# sources.json calls the original papers "source"; the design doc calls them "core".
-_DOC_TYPE_BY_ROLE = {"source": "core"}
 
 
 class Retriever(Protocol):
@@ -43,25 +43,40 @@ class Retriever(Protocol):
     ) -> list[RetrievedChunk]: ...
 
 
+def chunk_id_for(doc_id: str, page: int, chunk_index: int) -> str:
+    """Same identity the Qdrant indexer uses for a point: doc_id, page, chunk_index."""
+    return f"{doc_id}:p{page}:c{chunk_index}"
+
+
 def _module_exists(name: str) -> bool:
     try:
         return importlib.util.find_spec(name) is not None
-    except ModuleNotFoundError:  # a parent package (e.g. kv_eval.rag) is missing
+    except ModuleNotFoundError:  # a parent package is missing
         return False
 
 
+def qdrant_configured() -> bool:
+    return bool(qdrant_endpoint()) and bool(qdrant_api_key())
+
+
 def resolve_retriever() -> tuple[Retriever | None, str]:
-    """Return (retriever, backend name). Backend is "qdrant", "local-pdf" or "none"."""
-    if _module_exists(RAG_RETRIEVER_MODULE):
+    """Return (retriever, backend name). Backend is "qdrant", "local" or "none"."""
+    if _module_exists(RAG_RETRIEVER_MODULE) and qdrant_configured():
         module = importlib.import_module(RAG_RETRIEVER_MODULE)
         return adapt_rag_retriever(module.retrieve), "qdrant"
-    if _module_exists("pypdf"):
-        return default_local_retriever(), "local-pdf"
+    if _module_exists("pymupdf") and MANIFEST_PATH.exists():
+        return default_local_retriever(), "local"
     return None, "none"
 
 
 def adapt_rag_retriever(retrieve: Callable[..., list[Any]]) -> Retriever:
-    """Wrap the RAG owner's retrieve() so it returns RetrievedChunk with a chunk_id."""
+    """Wrap the RAG owner's retrieve() so it returns RetrievedChunk with a chunk_id.
+
+    Calls are serialized: the items run in parallel threads, and retrieve() shares
+    one local embedding model (often on MPS/CUDA) that is not safe to call
+    concurrently. Retrieval is short next to the LLM calls, so the cost is small.
+    """
+    lock = threading.Lock()
 
     def _retrieve(
         query: str,
@@ -69,7 +84,8 @@ def adapt_rag_retriever(retrieve: Callable[..., list[Any]]) -> Retriever:
         doc_types: list[str] | None = None,
         top_k: int = 5,
     ) -> list[RetrievedChunk]:
-        raw = retrieve(query=query, tech_id=tech_id, doc_types=doc_types, top_k=top_k)
+        with lock:
+            raw = retrieve(query=query, tech_id=tech_id, doc_types=doc_types, top_k=top_k)
         return [_to_chunk(item) for item in raw]
 
     return _retrieve
@@ -83,106 +99,34 @@ def _to_chunk(item: Any) -> RetrievedChunk:
     else:
         data = dict(vars(item))
     if not data.get("chunk_id"):
-        digest = hashlib.sha1(data["text"].encode("utf-8")).hexdigest()[:8]
-        data["chunk_id"] = f"{data['doc_id']}:p{data['page']}:{digest}"
-        logger.warning("retrieve() returned no chunk_id; derived %s", data["chunk_id"])
+        if data.get("chunk_index") is not None:
+            data["chunk_id"] = chunk_id_for(data["doc_id"], data["page"], data["chunk_index"])
+        else:
+            digest = hashlib.sha1(data["text"].encode("utf-8")).hexdigest()[:8]
+            data["chunk_id"] = f"{data['doc_id']}:p{data['page']}:{digest}"
+            logger.warning("retrieve() returned no chunk_index; derived %s", data["chunk_id"])
     return RetrievedChunk.model_validate(data)
 
 
-# ---- Temporary local fallback ----
+# ---- Offline backend ----
 
 _TOKEN = re.compile(r"[a-z0-9]+(?:[.\-][a-z0-9]+)*")
 _STOPWORDS = frozenset(
     {
-        "a",
-        "an",
-        "and",
-        "are",
-        "as",
-        "at",
-        "be",
-        "by",
-        "for",
-        "from",
-        "how",
-        "in",
-        "into",
-        "is",
-        "it",
-        "its",
-        "of",
-        "on",
-        "or",
-        "that",
-        "the",
-        "this",
-        "to",
-        "was",
-        "were",
-        "what",
-        "when",
-        "which",
-        "with",
-        "we",
-        "our",
-        "their",
-        "than",
+        "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how", "in",
+        "into", "is", "it", "its", "of", "on", "or", "that", "the", "this", "to",
+        "was", "were", "what", "when", "which", "with", "we", "our", "their", "than",
         "can",
     }
-)
-_YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
-_REF_MARKER = re.compile(r"arXiv|Proceedings|Conference|et al\.|In Advances")
+)  # fmt: skip
 
 
 def _tokenize(text: str) -> list[str]:
     return [t for t in _TOKEN.findall(text.lower()) if t not in _STOPWORDS]
 
 
-def _clean_page_text(text: str) -> str:
-    """Drop figure-axis noise (lines of bare numbers) and repair line-break hyphens."""
-    kept: list[str] = []
-    for line in text.splitlines():
-        stripped = line.strip()
-        compact = stripped.replace(" ", "")
-        if len(compact) < 3:
-            continue
-        letters = sum(ch.isalpha() for ch in compact)
-        if letters < 0.4 * len(compact):
-            continue
-        kept.append(stripped)
-
-    merged = ""
-    for line in kept:
-        if merged.endswith("-") and line[:1].islower():
-            merged = merged[:-1] + line
-        else:
-            merged = f"{merged} {line}" if merged else line
-    return re.sub(r"\s+", " ", merged).strip()
-
-
-def _looks_like_references(text: str) -> bool:
-    return len(_YEAR.findall(text)) >= 8 and len(_REF_MARKER.findall(text)) >= 4
-
-
-def _split(text: str, size: int, overlap: int) -> list[str]:
-    if len(text) <= size:
-        return [text] if text else []
-    parts: list[str] = []
-    start = 0
-    while start < len(text):
-        end = min(start + size, len(text))
-        if end < len(text):
-            cut = text.rfind(" ", start + size - overlap, end)
-            end = cut if cut > start else end
-        parts.append(text[start:end].strip())
-        if end >= len(text):
-            break
-        start = max(end - overlap, start + 1)
-    return [part for part in parts if part]
-
-
 class LocalPdfRetriever:
-    """BM25 over page-level chunks of data/papers. Page numbers are 1-based PDF pages."""
+    """BM25 over the RAG owner's chunks of data/papers. Pages are 1-based PDF pages."""
 
     def __init__(self, chunks: list[RetrievedChunk], k1: float = 1.5, b: float = 0.75) -> None:
         self._chunks = chunks
@@ -199,41 +143,39 @@ class LocalPdfRetriever:
             term: math.log(1 + (total - df + 0.5) / (df + 0.5)) for term, df in doc_freq.items()
         }
 
+    @property
+    def chunks(self) -> list[RetrievedChunk]:
+        return list(self._chunks)
+
     @classmethod
-    def from_papers(
+    def from_manifest(
         cls,
-        papers_dir: Path = PAPERS_DIR,
-        chunk_chars: int = 1200,
-        overlap: int = 200,
+        manifest_path: Path = MANIFEST_PATH,
+        pdf_root: Path = PAPERS_DIR,
+        doc_ids: set[str] | None = None,
     ) -> "LocalPdfRetriever":
-        from pypdf import PdfReader  # optional; see module docstring
+        from kv_eval.ingestion.cleaner import remove_repeated_headers_footers
+        from kv_eval.ingestion.loader import extract_pdf_pages
+        from kv_eval.ingestion.splitter import split_pages
+        from kv_eval.rag.types import Manifest, resolve_pdf_path
 
-        sources = json.loads((papers_dir / "sources.json").read_text(encoding="utf-8"))
-        documents = sources["documents"]
-        # Map a camp (SW/HW) to the tech id of that camp's source paper.
-        tech_by_camp = {doc["tech"]: doc["id"] for doc in documents if doc["role"] == "source"}
-
+        manifest = Manifest.model_validate(json.loads(manifest_path.read_text(encoding="utf-8")))
         chunks: list[RetrievedChunk] = []
-        for doc in documents:
-            doc_type = _DOC_TYPE_BY_ROLE.get(doc["role"], doc["role"])
-            tech_id = tech_by_camp.get(doc["tech"], "common")
-            first, last = doc["pages_used"]
-            reader = PdfReader(papers_dir / doc["file"])
-            for page in range(first, last + 1):
-                text = _clean_page_text(reader.pages[page - 1].extract_text() or "")
-                for index, part in enumerate(_split(text, chunk_chars, overlap)):
-                    if _looks_like_references(part):
-                        continue
-                    chunks.append(
-                        RetrievedChunk(
-                            text=part,
-                            doc_id=doc["id"],
-                            page=page,
-                            chunk_id=f"{doc['id']}:p{page}:c{index}",
-                            tech_id=tech_id,
-                            doc_type=doc_type,
-                        )
+        for document in manifest.documents:
+            if doc_ids is not None and document.doc_id not in doc_ids:
+                continue
+            pages = extract_pdf_pages(resolve_pdf_path(pdf_root, document.file), document)
+            for chunk in split_pages(remove_repeated_headers_footers(pages), document):
+                chunks.append(
+                    RetrievedChunk(
+                        text=chunk.text,
+                        doc_id=chunk.doc_id,
+                        page=chunk.page,
+                        chunk_id=chunk_id_for(chunk.doc_id, chunk.page, chunk.chunk_index),
+                        tech_id=chunk.tech_id,
+                        doc_type=chunk.doc_type,
                     )
+                )
         return cls(chunks)
 
     def __call__(
@@ -246,7 +188,7 @@ class LocalPdfRetriever:
         terms = _tokenize(query)
         scored: list[tuple[float, int]] = []
         for index, chunk in enumerate(self._chunks):
-            if tech_id is not None and chunk.tech_id != tech_id:
+            if tech_id is not None and (chunk.tech_id or "").lower() != tech_id.lower():
                 continue
             if doc_types is not None and chunk.doc_type not in doc_types:
                 continue
@@ -272,4 +214,4 @@ class LocalPdfRetriever:
 
 @lru_cache(maxsize=1)
 def default_local_retriever() -> LocalPdfRetriever:
-    return LocalPdfRetriever.from_papers()
+    return LocalPdfRetriever.from_manifest()

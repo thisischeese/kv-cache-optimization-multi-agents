@@ -110,13 +110,15 @@ def _fallback_queries(tech: Tech, spec: ItemSpec) -> list[str]:
     ]
 
 
-# "(passages 1, 3)" or "(passage_numbers:[2])" are prompt-local numbering,
-# meaningless to readers; citations carry the real locators.
+# "(passages 1, 3)", "(passage_numbers:[2])" and bare "(3,4)" are prompt-local
+# passage numbering, meaningless to readers; citations carry the real locators.
 _PASSAGE_REF = re.compile(r"\s*\([^()]*passage[^()]*\)", re.IGNORECASE)
+_BARE_REF = re.compile(r"\s*\((?:\d+\s*(?:,|and)\s*)*\d+\)")
 
 
 def _clean_point_text(text: str) -> str:
-    return " ".join(_PASSAGE_REF.sub("", text).split())
+    text = _BARE_REF.sub("", _PASSAGE_REF.sub("", text))
+    return " ".join(text.split())
 
 
 _NUMBER = re.compile(r"\d+(?:\.\d+)?")
