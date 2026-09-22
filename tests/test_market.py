@@ -1,4 +1,5 @@
 from kv_eval.agents import market as market_module
+from kv_eval.agents.market import _mentions_tech_and_kv_cache
 from kv_eval.schemas import Tech
 from kv_eval.state import MainState
 from kv_eval.tools.web_search import WebEvidence
@@ -138,11 +139,11 @@ def test_collect_market_evidence_deduplicates_by_criterion_and_url(
         },
     ]
     results = [
-        WebEvidence(
-            title="KIVI adoption",
-            url="https://example.com/kivi",
-            snippet="Same source.",
-        )
+            WebEvidence(
+                title="KIVI KV cache adoption",
+                url="https://example.com/kivi",
+                snippet="KIVI KV cache adoption for LLM inference.",
+            )
     ]
 
     monkeypatch.setattr(
@@ -159,6 +160,28 @@ def test_collect_market_evidence_deduplicates_by_criterion_and_url(
     collected = market_module._collect_market_evidence("KIVI")
 
     assert collected == [("adoption", results[0])]
+
+
+def test_market_evidence_requires_technology_and_kv_cache_context() -> None:
+    relevant = WebEvidence(
+        title="KIVI KV cache market adoption",
+        url="https://example.com/kivi",
+        snippet="KIVI is used for LLM inference with KV cache optimization.",
+    )
+    unrelated_same_name = WebEvidence(
+        title="KIVI engineering association",
+        url="https://kivi.nl/example",
+        snippet="An announcement from the engineering association.",
+    )
+    unrelated_kv_cache = WebEvidence(
+        title="KV cache market overview",
+        url="https://example.com/overview",
+        snippet="The selected technology is not mentioned here.",
+    )
+
+    assert _mentions_tech_and_kv_cache(relevant, "KIVI") is True
+    assert _mentions_tech_and_kv_cache(unrelated_same_name, "KIVI") is False
+    assert _mentions_tech_and_kv_cache(unrelated_kv_cache, "KIVI") is False
 
 
 def test_market_agent_uses_market_prompt_for_llm_assessment(monkeypatch) -> None:
