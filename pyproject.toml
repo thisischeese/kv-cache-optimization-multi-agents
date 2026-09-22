@@ -13,6 +13,7 @@ dependencies = [
     "langgraph>=1.2.11",
     "pydantic>=2.13.5",
     "python-dotenv>=1.2.3",
+    "qdrant-client>=1.19.1",
 ]
 
 [dependency-groups]
