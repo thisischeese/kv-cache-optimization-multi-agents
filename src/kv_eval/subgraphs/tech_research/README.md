@@ -82,30 +82,12 @@ uv run python app.py                        # 실제 LLM + Qdrant
 
 ## 다른 담당에게 요청할 것
 
-**5번 (Graph / 통합)**
+**5번 (Graph / 통합)**: 통합 PR #3으로 반영된 상태
 
-1. `schemas.py`: `CitedTechProfile`은 공용 `TechProfile`을 상속해 기존 필드(`overview`, `mechanism`, `limitations`)를 그대로 채웁니다. 7개 항목과 인용은 `sections`에 있습니다. 공용 스키마로 옮길지는 5번이 정해 주세요. 옮긴다면 `Citation`, `SectionPoint`, `ProfileSection`을 함께 옮기면 됩니다.
-2. Send를 메인 그래프로 옮길 때 필요한 변경은 두 가지입니다.
-   - `state.py`: `tech_profiles: Annotated[dict[str, TechProfile], operator.or_]`
-   - `graph.py`: 아래처럼 연결합니다.
-
-   ```python
-   from kv_eval.agents.tech_research import tech_research_target_node
-
-   builder.add_node("tech_research", tech_research_target_node)
-   builder.add_conditional_edges(
-       "setup",
-       lambda s: [Send("tech_research", {"target": t}) for t in s["targets"]],
-       ["tech_research"],
-   )
-   ```
-
-   - `tech_research_target_node`는 호출 시점에 모드와 의존성을 정합니다. `app.py`가 그래프를 import한 뒤에 `.env`를 읽기 때문에, 그래프를 만들 때 `build_default_deps()`를 부르면 키를 못 읽습니다.
-   - 이 연결 방식은 `tests/test_tech_research.py`에서 mock 모드와 RAG 모드(가짜 LLM) 모두 확인했습니다.
-   - 그 전까지는 `tech_research_agent` 노드가 내부에서 같은 Send 구조를 돌리므로 메인 그래프를 바꾸지 않아도 됩니다.
-3. `app.py`의 "All agents are running on mock data; no API call was made." 문구는 기술 조사가 RAG로 돌 때 사실과 다릅니다.
-4. `tests/test_graph.py`는 셸에 `OPENAI_API_KEY`가 있고 리트리버가 있으면 실제 API를 부릅니다. 오프라인을 보장하려면 테스트에서 `TECH_RESEARCH_MODE=mock`을 지정해 주세요.
-5. 모델명 등 `TECH_RESEARCH_*` 설정을 `config.py`로 모을지 정해 주세요.
+- **메인 그래프 연결:** 메인 그래프는 `setup` 뒤에 기술마다 `Send("tech_research", {"target", "domain"})`를 보냅니다. `tech_research_agent`는 이 입력(기술 1개)과 전체 상태 입력(`targets`, 기술 2개)을 모두 받습니다. 두 입력은 `tests/test_tech_research.py`의 통합 테스트가 실제 `kv_eval.graph`로 확인합니다.
+- **공용 스키마:** 공용 `TechProfile`의 `experiment_setup`, `reported_results`, `scope`, `competing_views`, `citations`를 이 에이전트가 채웁니다. 원문에서 못 찾은 항목은 빈 값으로 둡니다.
+- **오프라인 판단:** `config.llm_enabled()`를 따르므로 테스트(`KV_EVAL_OFFLINE=1`)에서는 항상 mock입니다.
+- **병렬 실행:** 두 Send 분기가 동시에 들어와도 기본 의존성은 한 번만 만들고, Qdrant 검색은 프로세스 전체에서 한 줄로 세워 부릅니다. 임베딩 모델을 MPS에서 동시에 부르면 프로세스가 죽기 때문입니다(Metal "failed assertion").
 
 **1번 (RAG / Qdrant)**
 

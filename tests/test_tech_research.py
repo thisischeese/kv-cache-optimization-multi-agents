@@ -121,6 +121,11 @@ def test_both_techs_get_cited_profiles() -> None:
                     assert citation.chunk_id.startswith(f"{tech_id}:p")
         assert f"[{tech_id} p.2]" in profile.overview
         assert profile.limitations and all(f"[{tech_id} p." in item for item in profile.limitations)
+        # shared TechProfile fields that the report renders
+        assert f"[{tech_id} p." in profile.experiment_setup
+        assert f"[{tech_id} p." in profile.scope
+        assert profile.reported_results and profile.competing_views
+        assert profile.citations == [f"[{tech_id} p.2]", f"[{tech_id} p.3]"]
 
 
 def test_rewrite_loop_retries_then_gives_up() -> None:
@@ -138,7 +143,7 @@ def test_rewrite_loop_retries_then_gives_up() -> None:
     assert len(section.queries) == 1 + deps.max_rewrites
     assert len(set(section.queries)) == len(section.queries)
     assert all("KIVI" in query for query in section.queries)
-    assert profiles["kivi"].limitations == ["(not found in the source paper)"]
+    assert profiles["kivi"].limitations == []  # not found stays empty (shared schema)
     grade_calls = [h for name, h in llm.calls if name == "GradeOut" and "Limitations" in h]
     assert len(grade_calls) == 1 + deps.max_rewrites
 
@@ -394,14 +399,116 @@ def test_target_node_merges_under_main_graph_send_in_rag_mode(monkeypatch) -> No
     monkeypatch.setenv("TECH_RESEARCH_MODE", "rag")
     deps, _ = make_deps()
     monkeypatch.setattr(agent_module, "build_default_deps", lambda: deps)
-    agent_module._default_tech_graph.cache_clear()
+    agent_module._reset_default_tech_graph()
     try:
         profiles = _run_main_graph_style_send()
     finally:
-        agent_module._default_tech_graph.cache_clear()
+        agent_module._reset_default_tech_graph()
 
     assert set(profiles) == {"kivi", "infinigen"}
     assert all(isinstance(profile, CitedTechProfile) for profile in profiles.values())
+
+
+def test_agent_node_accepts_one_send_payload(monkeypatch) -> None:
+    """The main graph sends {"target", "domain"} to tech_research_agent, one tech each."""
+    from kv_eval.nodes.setup import setup_node
+
+    setup = setup_node({})
+    payload = {"target": setup["targets"][0], "domain": setup["domain"]}
+
+    monkeypatch.setenv("TECH_RESEARCH_MODE", "mock")
+    assert set(tech_research_agent(payload)["tech_profiles"]) == {"kivi"}
+
+    monkeypatch.setenv("TECH_RESEARCH_MODE", "rag")
+    deps, _ = make_deps()
+    monkeypatch.setattr(agent_module, "build_default_deps", lambda: deps)
+    agent_module._reset_default_tech_graph()
+    try:
+        profiles = tech_research_agent(payload)["tech_profiles"]
+    finally:
+        agent_module._reset_default_tech_graph()
+    assert set(profiles) == {"kivi"} and isinstance(profiles["kivi"], CitedTechProfile)
+
+
+def test_integrated_main_graph_runs_tech_research_in_rag_mode(monkeypatch) -> None:
+    """Whole kv_eval.graph with RAG tech research (fake LLM/retriever), other agents offline."""
+    from kv_eval.graph import build_graph
+
+    monkeypatch.setenv("TECH_RESEARCH_MODE", "rag")
+    deps, _ = make_deps()
+    monkeypatch.setattr(agent_module, "build_default_deps", lambda: deps)
+    agent_module._reset_default_tech_graph()
+    try:
+        final = build_graph().invoke({}, {"recursion_limit": 100})
+    finally:
+        agent_module._reset_default_tech_graph()
+
+    profiles = final["tech_profiles"]
+    assert set(profiles) == {"kivi", "infinigen"}
+    assert all(isinstance(p, CitedTechProfile) for p in profiles.values())
+    report = final["report_md"]
+    assert "[kivi p.2]" in report and "[infinigen p.2]" in report
+    assert "실험 설정" in report
+
+
+def test_rag_calls_are_serialized_across_adapters() -> None:
+    """Two adapters (e.g. two Send branches) must never call retrieve() at once."""
+    import threading
+    import time
+
+    from kv_eval.subgraphs.tech_research.retriever import adapt_rag_retriever
+
+    active = {"now": 0, "max": 0}
+    guard = threading.Lock()
+
+    def owner_retrieve(query, tech_id=None, doc_types=None, top_k=5):
+        with guard:
+            active["now"] += 1
+            active["max"] = max(active["max"], active["now"])
+        time.sleep(0.05)
+        with guard:
+            active["now"] -= 1
+        return []
+
+    adapters = [adapt_rag_retriever(owner_retrieve) for _ in range(2)]
+    threads = [threading.Thread(target=a, args=("q",)) for a in adapters for _ in range(3)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert active["max"] == 1
+
+
+def test_default_deps_are_built_once_under_parallel_send(monkeypatch) -> None:
+    import threading
+    import time
+
+    from kv_eval.nodes.setup import setup_node
+
+    monkeypatch.setenv("TECH_RESEARCH_MODE", "rag")
+    deps, _ = make_deps()
+    built = {"count": 0}
+
+    def slow_build():
+        built["count"] += 1
+        time.sleep(0.05)
+        return deps
+
+    monkeypatch.setattr(agent_module, "build_default_deps", slow_build)
+    agent_module._reset_default_tech_graph()
+    setup = setup_node({})
+    payloads = [{"target": t, "domain": setup["domain"]} for t in setup["targets"]]
+    try:
+        threads = [threading.Thread(target=tech_research_agent, args=(p,)) for p in payloads]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+    finally:
+        agent_module._reset_default_tech_graph()
+
+    assert built["count"] == 1
 
 
 def test_offline_chunk_ids_follow_the_indexer_point_ids() -> None:

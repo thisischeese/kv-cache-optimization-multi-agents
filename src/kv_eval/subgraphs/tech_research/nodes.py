@@ -26,7 +26,6 @@ from kv_eval.subgraphs.tech_research.prompts import (
 from kv_eval.subgraphs.tech_research.retriever import Retriever
 from kv_eval.subgraphs.tech_research.state import (
     ITEM_KEYS,
-    NOT_FOUND_TEXT,
     Citation,
     CitedTechProfile,
     ItemState,
@@ -306,17 +305,34 @@ def fan_out_items(state: TechState) -> list[Send]:
 
 
 def assemble_profile(state: TechState) -> TechState:
+    """Fill the shared TechProfile fields from the cited sections.
+
+    Items not found in the paper stay empty, following the shared schema;
+    overview and mechanism are required strings, so they carry NOT_FOUND_TEXT.
+    """
     tech = state["target"]
     found = state.get("sections", {})
     sections = {
         key: found.get(key) or ProfileSection(item=key, status="not_found") for key in ITEM_KEYS
     }
-    limitation_points = sections["limitations"].points
+
+    def text(key: str) -> str:
+        return sections[key].render() if sections[key].points else ""
+
+    def items(key: str) -> list[str]:
+        return [point.render() for point in sections[key].points]
+
+    labels = [c.label for key in ITEM_KEYS for c in sections[key].citations]
     profile = CitedTechProfile(
         tech_id=tech.tech_id,
         overview=sections["overview"].render(),
         mechanism=sections["mechanism"].render(),
-        limitations=[point.render() for point in limitation_points] or [NOT_FOUND_TEXT],
+        limitations=items("limitations"),
+        experiment_setup=text("experiment_setup"),
+        reported_results=items("reported_results"),
+        scope=text("scope"),
+        competing_views=items("competing_views"),
+        citations=list(dict.fromkeys(labels)),
         sections=sections,
     )
     return {"tech_profiles": {tech.tech_id: profile}}
