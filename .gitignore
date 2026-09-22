@@ -219,4 +219,6 @@ __marimo__/
 
 .env
 
-outputs/
+# 생성물은 추적하지 않되, 디렉터리 자체는 클론 시 존재하도록 .gitkeep만 남긴다
+outputs/*
+!outputs/.gitkeep
