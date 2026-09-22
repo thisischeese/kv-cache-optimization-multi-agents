@@ -15,14 +15,37 @@ def test_market_agent_returns_web_based_evidence(monkeypatch) -> None:
         "_collect_market_evidence",
         lambda _: [
             (
+                "demand_growth",
+                WebEvidence(
+                    title="KIVI market demand",
+                    url="https://example.com/demand",
+                    snippet="Market demand evidence.",
+                ),
+            ),
+            (
                 "adoption",
                 WebEvidence(
                     title="KIVI adoption report",
-                    url="https://example.com/kivi",
-                    snippet="KIVI was evaluated in a serving environment.",
-                    source_type="web",
+                    url="https://example.com/adoption",
+                    snippet="Adoption evidence.",
                 ),
-            )
+            ),
+            (
+                "ecosystem",
+                WebEvidence(
+                    title="KIVI ecosystem",
+                    url="https://example.com/ecosystem",
+                    snippet="Ecosystem evidence.",
+                ),
+            ),
+            (
+                "barriers",
+                WebEvidence(
+                    title="KIVI adoption barriers",
+                    url="https://example.com/barriers",
+                    snippet="Barrier evidence.",
+                ),
+            ),
         ],
     )
 
@@ -41,13 +64,31 @@ def test_market_agent_returns_web_based_evidence(monkeypatch) -> None:
 
     assert result.perspective == "market"
     assert result.tech_results["kivi"]
-    assert len(result.evidence) == 1
-    assert result.evidence[0].source_type == "other"
-    assert result.evidence[0].tech_id == "kivi"
-    assert result.evidence[0].url == "https://example.com/kivi"
+    assert len(result.evidence) == 4
+    assert all(evidence.source_type == "other" for evidence in result.evidence)
+    assert all(evidence.tech_id == "kivi" for evidence in result.evidence)
+    assert {
+        evidence.url
+        for evidence in result.evidence
+    } == {
+        "https://example.com/demand",
+        "https://example.com/adoption",
+        "https://example.com/ecosystem",
+        "https://example.com/barriers",
+    }
     assert result.summary.startswith(
-    "본 평가는 공개 정보를 기반으로 한 평가이다."
+        "본 평가는 공개 정보를 기반으로 한 평가이다."
     )
-    assert result.evidence[0].claim == (
-        "상용화 및 채택 현황 관련 공개 웹 근거"
-    )
+    assert {
+        evidence.claim
+        for evidence in result.evidence
+    } == {
+        "시장 수요와 성장성 관련 공개 웹 근거",
+        "상용화 및 채택 현황 관련 공개 웹 근거",
+        "생태계 형성 정도 관련 공개 웹 근거",
+        "도입 장벽 관련 공개 웹 근거",
+    }
+    assert "시장 수요와 성장성 1건" in result.tech_results["kivi"]
+    assert "상용화 및 채택 현황 1건" in result.tech_results["kivi"]
+    assert "생태계 형성 정도 1건" in result.tech_results["kivi"]
+    assert "도입 장벽 1건" in result.tech_results["kivi"]

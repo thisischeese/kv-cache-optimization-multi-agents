@@ -1,5 +1,7 @@
 """시장성 평가 Agent."""
 
+from collections import Counter
+
 from kv_eval.agents.market_queries import (
     MARKET_CRITERIA,
     build_market_web_queries,
@@ -78,22 +80,36 @@ def market_agent(state: MainState) -> MainState:
     for tech in state.get("targets", []):
         tech_evidence: list[Evidence] = []
 
+        market_items: list[tuple[str, WebEvidence]] = []
+
         if web_enabled:
-            web_items = _collect_market_evidence(tech.name)
-            tech_evidence = [
-                _web_to_evidence(
-                    criterion=criterion,
-                    item=item,
-                    tech_id=tech.tech_id,
-                )
-                for criterion, item in web_items
-            ]
+            market_items = _collect_market_evidence(tech.name)
+
+        tech_evidence = [
+            _web_to_evidence(
+                criterion=criterion,
+                item=item,
+                tech_id=tech.tech_id,
+            )
+            for criterion, item in market_items
+        ]
 
         evidence.extend(tech_evidence)
 
+        criterion_counts = Counter(
+            criterion
+            for criterion, _ in market_items
+        )
+
+        criterion_summary = ", ".join(
+            f"{MARKET_CRITERIA[criterion]} "
+            f"{criterion_counts.get(criterion, 0)}건"
+            for criterion in MARKET_CRITERIA
+        )
+
         tech_results[tech.tech_id] = (
-            f"{tech.name}의 시장성 평가를 위해 "
-            f"{len(tech_evidence)}개의 공개 웹 근거를 수집했다. "
+            f"{tech.name}의 시장성 평가 근거를 수집했다. "
+            f"기준별 근거는 {criterion_summary}이다. "
             "최종 시장성 판단은 후속 단계에서 수행한다."
         )
 
