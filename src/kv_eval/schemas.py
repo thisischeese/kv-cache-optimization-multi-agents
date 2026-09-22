@@ -3,6 +3,8 @@
 First scaffolding pass: models are intentionally small and flat.
 """
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -22,7 +24,11 @@ class Evidence(BaseModel):
     evidence_id: str
     claim: str
     source_id: str
-    # TODO: add stance, quote, page/span locator once RAG retrieval is wired in.
+    # None = not yet evaluated (e.g. still mock data). evidence_check must
+    # treat None as "unknown", not as a failure, until a real agent sets it.
+    stance: Literal["positive", "critical", "neutral"] | None = None
+    independent: bool | None = None
+    # TODO: add quote, page/span locator once RAG retrieval is wired in.
 
 
 class TechProfile(BaseModel):
