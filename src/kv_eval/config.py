@@ -16,6 +16,7 @@ PERSPECTIVES: tuple[str, ...] = ("trl", "market", "stakeholder", "domain")
 
 DEFAULT_EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 DEFAULT_EMBEDDING_DEVICE = "cpu"
+DEFAULT_QDRANT_COLLECTION = "kv_cache_docs_v1"
 
 # Read lazily rather than as module constants: the entrypoint calls load_dotenv()
 # after this module is imported, so import-time reads would miss the .env values.
@@ -32,6 +33,22 @@ def embedding_model_name() -> str:
 
 def embedding_device() -> str:
     return os.getenv("EMBEDDING_DEVICE", DEFAULT_EMBEDDING_DEVICE)
+
+
+def qdrant_endpoint() -> str | None:
+    return os.getenv("QDRANT_ENDPOINT")
+
+
+def qdrant_api_key() -> str | None:
+    return os.getenv("QDRANT_API_KEY")
+
+
+def qdrant_collection() -> str:
+    return os.getenv("QDRANT_COLLECTION", DEFAULT_QDRANT_COLLECTION)
+
+
+def qdrant_vector_name() -> str | None:
+    return os.getenv("QDRANT_VECTOR_NAME") or None
 
 
 # TODO: add model name / temperature settings when real LLM agents replace the mocks.

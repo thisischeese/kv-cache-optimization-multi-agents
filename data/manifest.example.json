@@ -1,0 +1,104 @@
+{
+  "documents": [
+    {
+      "doc_id": "kivi",
+      "file": "kivi_2402.02750.pdf",
+      "title": "KIVI: A Tuning-Free Asymmetric 2bit Quantization for KV Cache",
+      "tech_id": "kivi",
+      "camp": "SW",
+      "doc_type": "core",
+      "page_start": 1,
+      "page_end": 15
+    },
+    {
+      "doc_id": "infinigen",
+      "file": "infinigen_2406.19707.pdf",
+      "title": "InfiniGen: Efficient Generative Inference of Large Language Models with Dynamic KV Cache Management",
+      "tech_id": "infinigen",
+      "camp": "HW",
+      "doc_type": "core",
+      "page_start": 1,
+      "page_end": 18
+    },
+    {
+      "doc_id": "kvtuner",
+      "file": "kvtuner_2502.04420.pdf",
+      "title": "KVTuner: Sensitivity-Aware Layer-Wise Mixed-Precision KV Cache Quantization for Efficient and Nearly Lossless LLM Inference",
+      "tech_id": "kivi",
+      "camp": "SW",
+      "doc_type": "followup",
+      "page_start": 1,
+      "page_end": 10
+    },
+    {
+      "doc_id": "xquant",
+      "file": "xquant_2510.11236.pdf",
+      "title": "XQuant: Achieving Ultra-Low Bit KV Cache Quantization with Cross-Layer Compression",
+      "tech_id": "kivi",
+      "camp": "SW",
+      "doc_type": "followup",
+      "page_start": 1,
+      "page_end": 16
+    },
+    {
+      "doc_id": "shadowkv",
+      "file": "shadowkv_2410.21465.pdf",
+      "title": "ShadowKV: KV Cache in Shadows for High-Throughput Long-Context LLM Inference",
+      "tech_id": "infinigen",
+      "camp": "HW",
+      "doc_type": "followup",
+      "page_start": 1,
+      "page_end": 21
+    },
+    {
+      "doc_id": "retroinfer",
+      "file": "retroinfer_2505.02922.pdf",
+      "title": "RetroInfer: A Vector Storage Engine for Scalable Long-Context LLM Inference",
+      "tech_id": "infinigen",
+      "camp": "HW",
+      "doc_type": "followup",
+      "page_start": 1,
+      "page_end": 16
+    },
+    {
+      "doc_id": "bench_kivi",
+      "file": "bench_kivi_2607.05399.pdf",
+      "title": "Benchmarking KV-Cache Optimizations across Task Quality and System Performance for Long-Context Serving",
+      "tech_id": "kivi",
+      "camp": "SW",
+      "doc_type": "benchmark",
+      "page_start": 1,
+      "page_end": 13
+    },
+    {
+      "doc_id": "bench_infinigen",
+      "file": "bench_infinigen_2604.05012.pdf",
+      "title": "Comparative Characterization of KV Cache Management Strategies for LLM Inference",
+      "tech_id": "infinigen",
+      "camp": "HW",
+      "doc_type": "benchmark",
+      "page_start": 1,
+      "page_end": 8
+    },
+    {
+      "doc_id": "survey_tmlr",
+      "file": "survey_tmlr_2412.19442.pdf",
+      "title": "A Survey on Large Language Model Acceleration based on KV Cache Management",
+      "tech_id": "common",
+      "camp": "common",
+      "doc_type": "survey",
+      "page_start": 1,
+      "page_end": 40
+    },
+    {
+      "doc_id": "survey_acl",
+      "file": "survey_acl_2607.08057.pdf",
+      "title": "Towards Efficient Large Language Model Serving: A Survey on System-Aware KV Cache Optimization",
+      "tech_id": "common",
+      "camp": "common",
+      "doc_type": "survey",
+      "page_start": 1,
+      "page_end": 27
+    }
+  ]
+}
