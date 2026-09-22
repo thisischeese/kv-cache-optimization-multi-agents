@@ -14,6 +14,7 @@ from kv_eval.state import MainState
 from kv_eval.tools import WebEvidence, perplexity_search, search_web
 from kv_eval.tools.web_search import web_source_id
 from kv_eval.config import perplexity_api_key
+import re
 from urllib.parse import urlparse
 
 
@@ -58,6 +59,27 @@ def _is_company_first_party_source(item: WebEvidence) -> bool:
     )
 
     return has_first_party_marker or has_official_subdomain
+
+
+def _mentions_tech_and_kv_cache(
+    item: WebEvidence,
+    tech_name: str,
+) -> bool:
+    """검색 결과 제목과 요약에 기술명 및 KV cache 맥락이 있는지 확인한다."""
+
+    text = f"{item.title} {item.snippet}"
+    has_tech_name = re.search(
+        rf"\b{re.escape(tech_name)}\b",
+        text,
+        flags=re.IGNORECASE,
+    ) is not None
+    has_kv_cache = re.search(
+        r"\bkv[\s_-]*cache\b|\bkey[\s-]*value[\s_-]*cache\b",
+        text,
+        flags=re.IGNORECASE,
+    ) is not None
+
+    return has_tech_name and has_kv_cache
 
 def _deduplicate_chunks(
     chunks: list[RetrievedChunk],
@@ -135,6 +157,9 @@ def _collect_web_evidence(
         )
 
         for result in results:
+            if not _mentions_tech_and_kv_cache(result, tech_name):
+                continue
+
             if (
                 query["level"] == "trl_7_9"
                 and not _is_company_first_party_source(result)

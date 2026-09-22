@@ -6,6 +6,7 @@ from kv_eval.tools.web_search import WebEvidence
 from kv_eval.agents.trl import (
     _evaluate_trl_level,
     _is_company_first_party_source,
+    _mentions_tech_and_kv_cache,
 )
 from kv_eval.schemas import Evidence
 
@@ -185,3 +186,25 @@ def test_company_first_party_source_requires_official_signal() -> None:
 
     assert _is_company_first_party_source(official) is True
     assert _is_company_first_party_source(third_party) is False
+
+
+def test_web_evidence_requires_technology_and_kv_cache_context() -> None:
+    relevant = WebEvidence(
+        title="KIVI KV cache quantization",
+        url="https://example.com/kivi",
+        snippet="KIVI improves LLM inference with KV cache quantization.",
+    )
+    unrelated_same_name = WebEvidence(
+        title="KIVI institute announcement",
+        url="https://kivi.nl/example",
+        snippet="KIVI engineering community announcement.",
+    )
+    unrelated_kv_cache = WebEvidence(
+        title="KV cache optimization overview",
+        url="https://example.com/overview",
+        snippet="The article does not mention the selected technology.",
+    )
+
+    assert _mentions_tech_and_kv_cache(relevant, "KIVI") is True
+    assert _mentions_tech_and_kv_cache(unrelated_same_name, "KIVI") is False
+    assert _mentions_tech_and_kv_cache(unrelated_kv_cache, "KIVI") is False
