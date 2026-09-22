@@ -140,14 +140,17 @@ def test_first_pass_runs_evidence_check_once() -> None:
 
 def test_tech_research_fans_out_one_run_per_tech(monkeypatch) -> None:
     received = []
-    mock_profiles = graph_module.tech_research_agent({})["tech_profiles"]
+    targets = graph_module.setup_node({})["targets"]
+    mock_profiles = {}
+    for tech in targets:
+        mock_profiles |= graph_module.tech_research_target_node({"target": tech})["tech_profiles"]
 
     def one_tech(state):
         received.append(sorted(state))
         tech = state["target"]
         return {"tech_profiles": {tech.tech_id: mock_profiles[tech.tech_id]}}
 
-    monkeypatch.setattr(graph_module, "tech_research_agent", one_tech)
+    monkeypatch.setattr(graph_module, "tech_research_target_node", one_tech)
     graph = graph_module.build_graph()
     final = graph.invoke({})
     assert received == [["domain", "target"], ["domain", "target"]]   # one Send per tech
