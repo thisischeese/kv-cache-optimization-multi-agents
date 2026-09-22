@@ -52,3 +52,49 @@ def qdrant_vector_name() -> str | None:
 
 
 # TODO: add model name / temperature settings when real LLM agents replace the mocks.
+
+# --- evidence_check thresholds (per perspective, per tech) ---
+MIN_EVIDENCE_PER_TECH = 2
+MIN_INDEPENDENT_PER_TECH = 1
+MIN_CRITICAL_PER_TECH = 1
+# TRL judges maturity milestones, not opinions, so it has no critical-evidence rule.
+PERSPECTIVES_REQUIRING_CRITICAL: tuple[str, ...] = ("market", "stakeholder", "domain")
+MAX_RECHECK_PER_PERSPECTIVE = 1
+
+# --- report / review ---
+SOURCES_PATH = PROJECT_ROOT / "data" / "papers" / "sources.json"
+# 제출 파일명: RAG-Output_{캠퍼스}_{X반}_{참여 인원 이름을 + 로 연결}.pdf
+TEAM_CAMPUS = "판교"
+TEAM_CLASS = "8반"
+TEAM_MEMBERS: tuple[str, ...] = ("최다은", "이승민", "전우진", "정선우", "이진호")  # 역할 분담 1~5번 순
+PDF_PATH = OUTPUT_DIR / f"RAG-Output_{TEAM_CAMPUS}_{TEAM_CLASS}_{'+'.join(TEAM_MEMBERS)}.pdf"
+SUMMARY_MAX_CHARS = 800  # 약 A4 반 쪽
+TRL_ESTIMATE_PHRASE = "공개 정보 기반 추정"
+# 우열·추천 표현. "추천하지 않"처럼 부정문 안에 있으면 허용한다.
+BANNED_EXPRESSIONS: tuple[str, ...] = ("우수", "열등", "승자", "더 낫", "추천")
+ALLOWED_NEGATIONS: tuple[str, ...] = ("추천하지 않", "추천을 하지 않", "우열을 가리지 않")
+MAX_REPORT_REVISIONS = 1
+
+# --- PDF ---
+# Korean-capable TTF candidates per OS. Override with PDF_FONT_PATH in .env.
+PDF_FONT_CANDIDATES: tuple[str, ...] = (
+    "/System/Library/Fonts/Supplemental/AppleGothic.ttf",   # macOS
+    "C:/Windows/Fonts/malgun.ttf",                           # Windows
+    "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",       # Linux (fonts-nanum)
+)
+
+
+def pdf_font_path() -> str | None:
+    return os.getenv("PDF_FONT_PATH")
+
+# --- LLM ---
+DEFAULT_LLM_MODEL = "gpt-4.1-mini"
+
+
+def llm_model() -> str:
+    return os.getenv("LLM_MODEL", DEFAULT_LLM_MODEL)
+
+
+def llm_enabled() -> bool:
+    """LLM calls need a key and are always off in tests (KV_EVAL_OFFLINE=1)."""
+    return bool(openai_api_key()) and os.getenv("KV_EVAL_OFFLINE") != "1"

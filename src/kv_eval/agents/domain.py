@@ -3,14 +3,12 @@
 입력: MainState — 재조사 때 state["evidence_check"]["domain"].missing만 읽는다(다른 관점 결과는 읽지 않음).
       근거는 공용 RAG retrieve()로 원 논문·후속 논문·제3자 벤치마크 청크를 직접 검색한다.
 출력: {"domain_eval": DomainEvaluation} — 기준별 근거와 실험 조건, 기술 간 직접 비교 가능 여부, 기술별 한 줄 요약(tech_results)
-의존: kv_eval.rag.retriever.retrieve, langchain_openai.ChatOpenAI(LLM이 켜졌을 때만), prompts/domain.md,
+의존: kv_eval.rag.retriever.retrieve, 공용 kv_eval.llm.chat_model, prompts/domain.md,
       kv_eval.schemas(Evidence, PerspectiveResult), kv_eval.state(MainState)
-상태: 미완성 — 검색 → LLM 추출 → stance 판정(Judge) → 조건 비교까지 연결됨.
-      통합 후 _llm_enabled/_structured_llm을 공용 config.llm_enabled/llm.chat_model로, _llm_judge를 공용 Judge로 교체해야 함
+상태: 검색 → LLM 추출 → stance 판정(Judge) → 조건 비교까지 연결됨.
 """
 
 import logging
-import os
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from itertools import combinations
 from pathlib import Path
@@ -18,6 +16,8 @@ from typing import Literal, NamedTuple, Protocol, get_args
 
 from pydantic import BaseModel, Field
 
+from kv_eval.config import llm_enabled
+from kv_eval.llm import chat_model
 from kv_eval.rag.retriever import retrieve
 from kv_eval.rag.types import RetrievedChunk
 from kv_eval.schemas import Evidence, PerspectiveResult
@@ -575,16 +575,13 @@ def evaluate_cloud_serving(
 
 
 def _llm_enabled() -> bool:
-    # TODO(통합): kv_eval.config.llm_enabled()로 교체. 의미는 같다(키 있음 + KV_EVAL_OFFLINE != "1").
-    return bool(os.getenv("OPENAI_API_KEY")) and os.getenv("KV_EVAL_OFFLINE") != "1"
+    """Compatibility wrapper around the shared integration setting."""
+
+    return llm_enabled()
 
 
 def _structured_llm(schema: type[BaseModel]):
-    # TODO(통합): kv_eval.llm.chat_model()로 교체. Imported lazily so tests never build a client.
-    from langchain_openai import ChatOpenAI
-
-    model = ChatOpenAI(model=os.getenv("LLM_MODEL", "gpt-4.1-mini"), temperature=0)
-    return model.with_structured_output(schema)
+    return chat_model(temperature=0).with_structured_output(schema)
 
 
 def _llm_extract(tech_name: str, context: str) -> list[_LLMDomainFinding]:

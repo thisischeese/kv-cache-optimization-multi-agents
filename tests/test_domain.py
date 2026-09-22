@@ -160,6 +160,16 @@ def test_shared_evidence_fields_follow_team_contract() -> None:
     assert fields["tech_id"] == "kivi" and fields["page"] == 3
 
 
+def test_evaluation_preserves_shared_evidence_fields() -> None:
+    result = evaluate_cloud_serving([_numeric("a", "kivi", 8)])
+
+    shared = result.evidence[0]
+    assert shared.tech_id == "kivi"
+    assert shared.source_type == "benchmark"
+    assert shared.page == 5
+    assert shared.independent is True
+
+
 def _numeric(evidence_id: str, tech_id: str, batch_size: int) -> DomainEvidence:
     return DomainEvidence(
         evidence_id=evidence_id,

@@ -46,9 +46,11 @@ class DocumentChunk(BaseModel):
     camp: str
     doc_type: str
     chunk_index: int
+    chunk_id: str | None = None
 
     def payload(self) -> dict[str, str | int]:
         return {
+            "chunk_id": self.chunk_id or f"{self.doc_id}:p{self.page}:c{self.chunk_index}",
             "doc_id": self.doc_id,
             "title": self.title,
             "page": self.page,
@@ -62,6 +64,7 @@ class DocumentChunk(BaseModel):
 
 class RetrievedChunk(BaseModel):
     text: str
+    chunk_id: str | None = None
     doc_id: str
     page: int
     tech_id: str

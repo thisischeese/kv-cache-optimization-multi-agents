@@ -5,15 +5,14 @@
       도입 기업/개발자·투자/업계 근거는 3번 공통 웹 검색 도구로 받는다(아직 미연결).
 출력: {"stakeholder_eval": StakeholderEvaluation} — 기술 × 그룹 판정(긍정 중심/비판 중심/엇갈림/공개 의견 없음),
       판정에 쓴 근거, 원저자 등으로 제외한 근거, 기술별 한 줄 요약(tech_results)
-의존: kv_eval.rag.retriever.retrieve, data/papers/sources.json(저자 목록), langchain_openai.ChatOpenAI(LLM이 켜졌을 때만),
+의존: kv_eval.rag.retriever.retrieve, data/papers/sources.json(저자 목록), 공용 kv_eval.llm.chat_model,
       prompts/stakeholder.md, kv_eval.schemas(Evidence, PerspectiveResult), kv_eval.state(MainState)
 상태: 미완성 — 경쟁 진영(RAG) 경로는 검색 → 추출 → stance 판정 → 비율 판정까지 연결됨.
-      웹 그룹은 3번 도구 연결 전이라 항상 "공개 의견 없음". 통합 후 _llm_enabled/_structured_llm/_llm_judge 교체 필요
+      웹 그룹은 3번 도구 연결 전이라 항상 "공개 의견 없음".
 """
 
 import json
 import logging
-import os
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -21,6 +20,8 @@ from typing import Literal, NamedTuple, Protocol
 
 from pydantic import BaseModel, Field
 
+from kv_eval.config import llm_enabled
+from kv_eval.llm import chat_model
 from kv_eval.rag.retriever import retrieve
 from kv_eval.rag.types import RetrievedChunk
 from kv_eval.schemas import Evidence, PerspectiveResult
@@ -632,16 +633,13 @@ def evaluate_stakeholders(
 
 
 def _llm_enabled() -> bool:
-    # TODO(통합): kv_eval.config.llm_enabled()로 교체. 의미는 같다(키 있음 + KV_EVAL_OFFLINE != "1").
-    return bool(os.getenv("OPENAI_API_KEY")) and os.getenv("KV_EVAL_OFFLINE") != "1"
+    """Compatibility wrapper around the shared integration setting."""
+
+    return llm_enabled()
 
 
 def _structured_llm(schema: type[BaseModel]):
-    # TODO(통합): kv_eval.llm.chat_model()로 교체. Imported lazily so tests never build a client.
-    from langchain_openai import ChatOpenAI
-
-    model = ChatOpenAI(model=os.getenv("LLM_MODEL", "gpt-4.1-mini"), temperature=0)
-    return model.with_structured_output(schema)
+    return chat_model(temperature=0).with_structured_output(schema)
 
 
 def _llm_extract(tech_name: str, context: str) -> list[_LLMOpinion]:

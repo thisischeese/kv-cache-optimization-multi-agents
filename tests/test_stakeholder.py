@@ -179,6 +179,20 @@ def test_shared_evidence_fields_follow_team_contract() -> None:
     assert stakeholder._shared_evidence_fields(core)["source_type"] == "core"
 
 
+def test_evaluation_preserves_shared_evidence_fields() -> None:
+    result = evaluate_stakeholders(
+        [_evidence("a", "kvtuner", "critical", scope_level="tech")], []
+    )
+
+    shared = result.evidence[0]
+    assert shared.tech_id == "kivi"
+    assert shared.source_type == "followup"
+    assert shared.page == 3
+    assert shared.stance == "critical"
+    assert shared.independent is True
+    assert shared.scope_level == "tech"
+
+
 def test_web_groups_without_the_tool_have_no_public_opinion() -> None:
     result = run_stakeholder_evaluation(
         retriever=RecordingRetriever(),
