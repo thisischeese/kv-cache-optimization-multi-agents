@@ -35,3 +35,11 @@ def embedding_device() -> str:
 
 
 # TODO: add model name / temperature settings when real LLM agents replace the mocks.
+
+# --- evidence_check thresholds (per perspective, per tech) ---
+MIN_EVIDENCE_PER_TECH = 2
+MIN_INDEPENDENT_PER_TECH = 1
+MIN_CRITICAL_PER_TECH = 1
+# TRL judges maturity milestones, not opinions, so it has no critical-evidence rule.
+PERSPECTIVES_REQUIRING_CRITICAL: tuple[str, ...] = ("market", "stakeholder", "domain")
+MAX_RECHECK_PER_PERSPECTIVE = 1

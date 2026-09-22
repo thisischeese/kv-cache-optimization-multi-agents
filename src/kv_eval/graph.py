@@ -1,8 +1,4 @@
-"""StateGraph wiring. This module is the only place that owns orchestration.
-
-TODO: add a conditional edge from evidence_check back to the failing
-perspectives (bounded retry).
-"""
+"""StateGraph wiring. This module is the only place that owns orchestration."""
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -14,7 +10,7 @@ from kv_eval.agents.stakeholder import stakeholder_agent
 from kv_eval.agents.synthesis import synthesis_agent
 from kv_eval.agents.tech_research import tech_research_agent
 from kv_eval.agents.trl import trl_agent
-from kv_eval.nodes.evidence_check import evidence_check_node
+from kv_eval.nodes.evidence_check import evidence_check_node, route_after_evidence_check
 from kv_eval.nodes.review import route_after_review, review_node
 from kv_eval.nodes.setup import setup_node
 from kv_eval.state import MainState
@@ -42,9 +38,20 @@ def build_graph() -> CompiledStateGraph:
     for node in PERSPECTIVE_NODES:
         builder.add_edge("tech_research", node)
 
-    builder.add_edge(PERSPECTIVE_NODES, "evidence_check")
+    # One edge per perspective instead of a single join over all four: a join
+    # only fires when *all* listed nodes ran in the same step, so it would
+    # never fire again after a partial recheck. On the first pass the four run
+    # in the same superstep anyway, so evidence_check still runs once.
+    for node in PERSPECTIVE_NODES:
+        builder.add_edge(node, "evidence_check")
 
-    builder.add_edge("evidence_check", "synthesis")
+    # Bounded recheck: evidence_check -> failing perspectives only (max 1 each),
+    # otherwise -> synthesis.
+    builder.add_conditional_edges(
+        "evidence_check",
+        route_after_evidence_check,
+        [*PERSPECTIVE_NODES, "synthesis"],
+    )
     builder.add_edge("synthesis", "report")
     builder.add_edge("report", "review")
 
