@@ -79,13 +79,71 @@ cp .env.example .env
 | `EMBEDDING_MODEL_NAME` | RAG 실행 시 사용 | 기본값 `Qwen/Qwen3-Embedding-0.6B` |
 | `EMBEDDING_DEVICE` | RAG 실행 시 사용 | `cpu` / `cuda` / `mps` — **본인 머신에 맞게 수정할 것** |
 | `HF_HOME` | 불필요 | 모델 가중치 캐시 경로 |
-| `QDRANT_ENDPOINT` | RAG 실행 시 필요 | Qdrant Cloud endpoint |
-| `QDRANT_API_KEY` | RAG 실행 시 필요 | Qdrant Cloud API key. 실제 키를 커밋하지 말 것 |
-| `QDRANT_COLLECTION` | RAG 실행 시 사용 | 기본값 `kv_cache_docs_v1`. 논문 특화 chunking은 `kv_cache_docs_v2` |
+| `QDRANT_ENDPOINT` | RAG 실행 시 필요 | Qdrant Cloud endpoint. 아래 공용 설정 참고 |
+| `QDRANT_API_KEY` | RAG 실행 시 필요 | 조회는 아래 공용 read-only 키, 적재는 담당자에게 write 키 요청 |
+| `QDRANT_COLLECTION` | RAG 실행 시 사용 | 사용할 collection. 아래 표 참고 |
 | `QDRANT_VECTOR_NAME` | 선택 | 기존 collection이 named vector를 여러 개 쓸 때 사용할 vector 이름 |
 
 `.env.example`의 `EMBEDDING_DEVICE`는 Apple Silicon 기준 `mps`로 되어 있다.
 NVIDIA GPU면 `cuda`, 그 외에는 `cpu`로 바꾼다.
+
+**`QDRANT_COLLECTION` 선택**
+
+| 값 | chunking | 상태 |
+| --- | --- | --- |
+| `kv_cache_docs_v1` | page text를 2200자 고정 폭으로 분할 | 551 point. 유지되지만 더 이상 갱신하지 않는다 |
+| `kv_cache_docs_v2` | 논문 layout 요소 인식 + section 경계 분할 | 611 point. **현재 기본값** |
+
+```bash
+# .env
+QDRANT_COLLECTION=kv_cache_docs_v2
+```
+
+두 collection 모두 1024차원 COSINE이고 payload 필드도 동일하므로 값만 바꾸면 된다.
+`retrieve()` 호출부는 수정할 필요가 없다. 자세한 차이는 [v1과 v2 collection](#v1과-v2-collection) 참고.
+
+### 공용 read-only Qdrant 키
+
+팀원이 각자 Qdrant 계정을 만들지 않아도 검색을 시험해볼 수 있도록, **조회 전용 키를 공유한다.**
+아래 값을 그대로 `.env`에 넣으면 된다.
+
+```bash
+QDRANT_ENDPOINT=https://c99e862e-573d-4c1c-b091-c8be42b02c34.eu-west-1-0.aws.cloud.qdrant.io
+QDRANT_API_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJyIiwic3ViamVjdCI6ImFwaS1rZXk6ODI4ZThlYmQtYmM0YS00NGI0LTlhMGQtZjM5YWU0MGE0Yzg5In0.v_ciBJMwGEP3W2WrtAFFZqYFw-t49SlXCKNPM4blp-o
+QDRANT_COLLECTION=kv_cache_docs_v2
+```
+
+**이 키로 할 수 있는 것**
+
+| 동작 | 가능 여부 |
+| --- | --- |
+| `retrieve()` 검색 | 가능 |
+| `scripts/test_retrieval.py`, `compare_retrieval.py`, `eval_retrieval.py` | 가능 |
+| `scripts/check_qdrant.py` (연결·collection 조회) | 가능 |
+| collection 목록 / point 개수 조회 | 가능 |
+| `scripts/ingest.py` (문서 적재) | **불가** |
+| collection 생성·삭제, payload index 생성 | **불가** |
+
+키 payload가 `{"access":"r"}`이며, 쓰기를 시도하면 Qdrant가 다음과 같이 거부한다.
+
+```
+403 Forbidden: Global manage access is required
+```
+
+**적재(ingest)를 하려면** write 권한 키가 따로 필요하다. 저장소에 두지 않으므로 담당자에게 요청한다.
+`scripts/ingest.py`를 read-only 키로 실행하면 `ensure_collection()` 단계에서 403으로 실패한다.
+
+**왜 이 키는 공유해도 되는가**
+
+- 조회 전용이라 데이터를 변조하거나 삭제할 수 없다
+- 결제 수단이 연결되지 않은 Qdrant Cloud 무료 클러스터라 비용이 발생하지 않는다
+- 적재된 내용은 공개된 arXiv 논문 10편의 본문 chunk뿐이며 비공개 정보가 없다
+
+**그래도 지켜야 할 것**
+
+- write 키, `OPENAI_API_KEY`, HuggingFace 토큰은 **절대 저장소에 넣지 않는다.** `.env`는 `.gitignore`에 있다
+- `.env.example`에는 placeholder만 둔다
+- 프로젝트가 끝나면 이 read-only 키도 Qdrant 콘솔에서 폐기한다
 
 ### 5. 설치 확인
 
