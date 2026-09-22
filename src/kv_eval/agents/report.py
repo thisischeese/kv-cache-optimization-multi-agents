@@ -1,12 +1,34 @@
-"""MOCK report agent. Renders the state into a Markdown document.
+"""Report agent. Assembles the Markdown report from the state.
 
-Pure string assembly, no LLM call.
+The section order follows the design (SUMMARY ... REFERENCE). Content comes
+from the perspective results and synthesis; this node adds structure,
+citations and the REFERENCE list, which is built by code from the ids
+actually cited in the body.
 
-TODO: replace the fixed template with an LLM writing pass.
-TODO: build REFERENCE from real evidence source ids once retrieval exists.
+On a revision pass (review found issues) it applies deterministic fixes:
+drops sentences with banned ranking/recommendation words, removes citations
+that don't resolve, and trims SUMMARY to the length limit.
+
+TODO: an LLM writing pass for SUMMARY once synthesis is real.
 """
 
+import re
+
+from kv_eval.config import (
+    ALLOWED_NEGATIONS,
+    BANNED_EXPRESSIONS,
+    SUMMARY_MAX_CHARS,
+    TRL_ESTIMATE_PHRASE,
+)
+from kv_eval.references import (
+    CITATION,
+    RESERVED_LABELS,
+    build_references,
+    cite,
+    known_citation_ids,
+)
 from kv_eval.schemas import (
+    CheckResult,
     DomainSpec,
     PerspectiveResult,
     Synthesis,
@@ -16,145 +38,193 @@ from kv_eval.schemas import (
 )
 from kv_eval.state import MainState
 
+BIAS_MEASURES: tuple[str, ...] = (
+    "원 논문 수치는 개발 주체의 자체 보고로 표기하고, 제3자 측정과 구분함",
+    "긍정 질의와 비판 질의를 같은 수로 검색함",
+    "원 논문과 저자 본인 자료는 독립 출처로 세지 않음",
+    "근거의 논조는 근거 점검 기준을 모르는 별도 Judge가 판정함",
+    "관점 Agent끼리 결과를 공유하지 않는 병렬 구조로 평가함",
+    "관점마다 독립 출처와 비판 근거가 부족하면 해당 관점만 1회 재조사함",
+    "두 기술 사이에 순위를 매기거나 추천하지 않음",
+)
 
-def _render_bullets(items: list[str]) -> str:
-    if not items:
-        return "- (none)"
-    return "\n".join(f"- {item}" for item in items)
-
-
-def _render_targets(targets: list[Tech]) -> str:
-    if not targets:
-        return "- (none)"
-    return "\n".join(
-        f"- **{tech.name}** (`{tech.tech_id}`, {tech.camp}): {tech.selection_reason}"
-        for tech in targets
-    )
+_PERSPECTIVE_LABEL = {"trl": "TRL", "market": "시장성", "stakeholder": "이해관계자", "domain": "도메인"}
 
 
-def _render_profiles(profiles: dict[str, TechProfile]) -> str:
+def _bullets(items: list[str]) -> str:
+    return "\n".join(f"- {item}" for item in items) if items else "- (없음)"
+
+
+def _targets(targets: list[Tech]) -> str:
+    return _bullets([f"**{t.name}** ({t.camp}): {t.selection_reason}" for t in targets])
+
+
+def _profiles(profiles: dict[str, TechProfile]) -> str:
     if not profiles:
-        return "(no tech profiles)"
-
-    sections: list[str] = []
-    for tech_id, profile in profiles.items():
-        sections.append(
-            f"### {tech_id}\n\n"
-            f"- 개요: {profile.overview}\n"
-            f"- 동작 방식: {profile.mechanism}\n"
-            f"- 한계:\n{_render_bullets(profile.limitations)}"
-        )
-    return "\n\n".join(sections)
+        return "(기술 프로필 없음)"
+    return "\n\n".join(
+        f"### {tech_id}\n\n- 개요: {p.overview}\n- 동작 방식: {p.mechanism}\n"
+        f"- 한계:\n{_bullets(p.limitations)}\n\n> 성능 수치는 개발 주체의 자체 보고입니다."
+        for tech_id, p in profiles.items()
+    )
 
 
-def _render_perspective(result: PerspectiveResult | None) -> str:
+def _evidence(result: PerspectiveResult | TRLResult) -> str:
+    return _bullets([f"{e.claim} {cite(e)}" for e in result.evidence])
+
+
+def _per_tech(result: PerspectiveResult | TRLResult) -> str:
+    return _bullets([f"**{tid}**: {text}" for tid, text in result.tech_results.items()])
+
+
+def _perspective(result: PerspectiveResult | None) -> str:
     if result is None:
-        return "(missing)"
-
-    evidence = (
-        "\n".join(
-            f"- `{item.evidence_id}` {item.claim} (source: `{item.source_id}`)"
-            for item in result.evidence
-        )
-        or "- (no evidence)"
-    )
-    return f"{result.summary}\n\n**Evidence**\n\n{evidence}"
+        return "(결과 없음)"
+    per_tech = f"{_per_tech(result)}\n\n" if result.tech_results else ""
+    return f"{per_tech}{result.summary}\n\n**근거**\n\n{_evidence(result)}"
 
 
-def _render_trl(result: TRLResult | None) -> str:
+def _trl(result: TRLResult | None) -> str:
     if result is None:
-        return "(missing)"
+        return f"(결과 없음)\n\n※ TRL은 {TRL_ESTIMATE_PHRASE}입니다."
+    return (
+        f"※ 아래 TRL은 {TRL_ESTIMATE_PHRASE}입니다.\n\n{_per_tech(result)}\n\n"
+        f"{result.summary}\n\n**근거**\n\n{_evidence(result)}"
+    )
 
-    per_tech = (
-        "\n".join(f"- **{tech_id}**: {text}" for tech_id, text in result.tech_results.items())
-        or "- (no per-tech result)"
-    )
-    evidence = (
-        "\n".join(
-            f"- `{item.evidence_id}` {item.claim} (source: `{item.source_id}`)"
-            for item in result.evidence
-        )
-        or "- (no evidence)"
-    )
-    return f"{per_tech}\n\n{result.summary}\n\n**Evidence**\n\n{evidence}"
+
+def _matrix(state: MainState, synthesis: Synthesis | None) -> str:
+    techs = [t.tech_id for t in state.get("targets", [])]
+    cells: dict[tuple[str, str], str] = {}
+    if synthesis:
+        cells = {(c.perspective, c.tech_id): c.summary for c in synthesis.matrix}
+    for perspective, key in (("trl", "trl_eval"), ("market", "market_eval"),
+                             ("stakeholder", "stakeholder_eval"), ("domain", "domain_eval")):
+        result = state.get(key)
+        if result is not None:
+            for tid, text in result.tech_results.items():
+                cells.setdefault((perspective, tid), text)
+    if not cells or not techs:
+        return "(매트릭스 없음)"
+    head = "| 관점 | " + " | ".join(techs) + " |\n|---|" + "---|" * len(techs)
+    rows = [
+        f"| {label} | " + " | ".join(cells.get((p, t), "-").replace("|", "/") for t in techs) + " |"
+        for p, label in _PERSPECTIVE_LABEL.items()
+    ]
+    return head + "\n" + "\n".join(rows)
+
+
+def _limitations(synthesis: Synthesis | None, checks: dict[str, CheckResult]) -> str:
+    items = list(synthesis.limitations) if synthesis else []
+    items.append(f"모든 평가는 {TRL_ESTIMATE_PHRASE}이며, 비공개 정보(실측 성능·운영 사례)는 반영되지 않음")
+    for perspective, check in checks.items():
+        label = _PERSPECTIVE_LABEL.get(perspective, perspective)
+        items += [f"{label}: 근거 부족 — {m}" for m in check.missing]
+        items += [f"{label}: {n}" for n in check.notes]
+    return _bullets(items)
+
+
+def _has_banned(sentence: str) -> bool:
+    cleaned = sentence
+    for ok in ALLOWED_NEGATIONS:
+        cleaned = cleaned.replace(ok, "")
+    return any(word in cleaned for word in BANNED_EXPRESSIONS)
+
+
+def _revise(body: str, state: MainState) -> str:
+    known = known_citation_ids(state) | RESERVED_LABELS
+    body = CITATION.sub(lambda m: m.group(0) if m.group(1) in known else "", body)
+    lines = []
+    for line in body.split("\n"):
+        if line.startswith("#") or line.startswith("|"):
+            lines.append(line)
+            continue
+        sentences = re.split(r"(?<=[.。!?다])\s+", line)
+        lines.append(" ".join(s for s in sentences if not _has_banned(s)))
+    return "\n".join(lines)
 
 
 def report_agent(state: MainState) -> MainState:
     targets: list[Tech] = state.get("targets", [])
     domain: DomainSpec | None = state.get("domain")
-    profiles: dict[str, TechProfile] = state.get("tech_profiles", {})
     synthesis: Synthesis | None = state.get("synthesis")
+    checks: dict[str, CheckResult] = state.get("evidence_check", {})
 
-    problem_definition = domain.problem_definition if domain else "(no domain spec)"
-    domain_name = domain.name if domain else "(unknown)"
+    summary_parts = [synthesis.matrix_summary] if synthesis and synthesis.matrix_summary else []
+    if synthesis and synthesis.conflicts:
+        summary_parts.append("관점 간 가장 크게 엇갈리는 지점: " + synthesis.conflicts[0].topic)
+    summary_parts.append(f"TRL을 포함한 모든 평가는 {TRL_ESTIMATE_PHRASE}이며, 두 기술의 우열을 판정하지 않습니다.")
+    summary = " ".join(summary_parts)[:SUMMARY_MAX_CHARS]
 
-    matrix_summary = synthesis.matrix_summary if synthesis else "(no synthesis)"
-    agreements = _render_bullets(synthesis.agreements if synthesis else [])
-    conflicts = _render_bullets(
-        [f"{c.topic} — {c.view_a} / {c.view_b}" for c in synthesis.conflicts]
-        if synthesis
-        else []
-    )
-    limitations = _render_bullets(synthesis.limitations if synthesis else [])
+    conflicts = [
+        f"{c.topic} — {c.view_a} / {c.view_b}"
+        + (" (사실 불일치)" if c.kind == "factual" else "")
+        + ("".join(f" [{i}]" for i in c.evidence_ids))
+        for c in (synthesis.conflicts if synthesis else [])
+    ]
 
-    report_md = f"""# SUMMARY
+    body = f"""# SUMMARY
 
-> 이 보고서는 1차 스캐폴딩 실행 결과이며, 모든 내용은 MOCK 데이터입니다.
-
-KV cache 최적화 기술 2종(KIVI, InfiniGen)을 `{domain_name}` 도메인에서 네 가지
-관점(TRL, 시장성, 이해관계자, 도메인)으로 비교했습니다.
-
-{matrix_summary}
+{summary}
 
 # 1. 분석 배경
 
-{problem_definition}
+{domain.problem_definition if domain else "(도메인 정의 없음)"}
 
 # 2. 기술 선정
 
-{_render_targets(targets)}
+{_targets(targets)}
 
 # 3. 기술 개요
 
-{_render_profiles(profiles)}
+{_profiles(state.get("tech_profiles", {}))}
 
 # 4. 관점별 평가
 
 ## 4.1 TRL
 
-{_render_trl(state.get("trl_eval"))}
+{_trl(state.get("trl_eval"))}
 
 ## 4.2 시장성
 
-{_render_perspective(state.get("market_eval"))}
+{_perspective(state.get("market_eval"))}
 
 ## 4.3 이해관계자
 
-{_render_perspective(state.get("stakeholder_eval"))}
+{_perspective(state.get("stakeholder_eval"))}
 
-## 4.4 도메인
+## 4.4 도메인 (클라우드 서빙)
 
-{_render_perspective(state.get("domain_eval"))}
+{_perspective(state.get("domain_eval"))}
 
-# 5. 종합 의견과 시사점
+# 5. 종합 의견 및 시사점
 
-{matrix_summary}
+{_matrix(state, synthesis)}
 
-**공통점**
+**관점 간 일치**
 
-{agreements}
+{_bullets(synthesis.agreements if synthesis else [])}
 
-**상충 지점**
+**관점 간 상충**
 
-{conflicts}
+{_bullets(conflicts)}
+
+**시사점**
+
+{_bullets(synthesis.implications if synthesis else [])}
 
 # 6. 한계점
 
-{limitations}
+{_limitations(synthesis, checks)}
 
-# REFERENCE
+**확증편향 방지 조치**
 
-TODO: reference builder will populate this section.
+{_bullets(list(BIAS_MEASURES))}
 """
 
+    if state.get("report_issues"):
+        body = _revise(body, state)
+
+    references = build_references(body, state)
+    report_md = body + "\n# REFERENCE\n\n" + (_bullets(references) if references else "- (인용 없음)") + "\n"
     return {"report_md": report_md}

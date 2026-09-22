@@ -43,3 +43,13 @@ MIN_CRITICAL_PER_TECH = 1
 # TRL judges maturity milestones, not opinions, so it has no critical-evidence rule.
 PERSPECTIVES_REQUIRING_CRITICAL: tuple[str, ...] = ("market", "stakeholder", "domain")
 MAX_RECHECK_PER_PERSPECTIVE = 1
+
+# --- report / review ---
+SOURCES_PATH = PROJECT_ROOT / "data" / "papers" / "sources.json"
+PDF_PATH = OUTPUT_DIR / "report.pdf"
+SUMMARY_MAX_CHARS = 800  # 약 A4 반 쪽
+TRL_ESTIMATE_PHRASE = "공개 정보 기반 추정"
+# 우열·추천 표현. "추천하지 않"처럼 부정문 안에 있으면 허용한다.
+BANNED_EXPRESSIONS: tuple[str, ...] = ("우수", "열등", "승자", "더 낫", "추천")
+ALLOWED_NEGATIONS: tuple[str, ...] = ("추천하지 않", "추천을 하지 않", "우열을 가리지 않")
+MAX_REPORT_REVISIONS = 1

@@ -15,8 +15,6 @@ Failing perspectives with budget left go into `recheck_targets`; only those
 nodes re-run, at most MAX_RECHECK_PER_PERSPECTIVE times each.
 """
 
-import re
-
 from kv_eval.config import (
     MAX_RECHECK_PER_PERSPECTIVE,
     MIN_CRITICAL_PER_TECH,
@@ -26,6 +24,7 @@ from kv_eval.config import (
     PERSPECTIVES_REQUIRING_CRITICAL,
     TECH_IDS,
 )
+from kv_eval.references import cited_ids
 from kv_eval.schemas import CheckResult, Evidence, PerspectiveResult, TRLResult
 from kv_eval.state import MainState
 
@@ -35,9 +34,6 @@ STATE_KEY_BY_PERSPECTIVE: dict[str, str] = {
     "stakeholder": "stakeholder_eval",
     "domain": "domain_eval",
 }
-
-_CITATION = re.compile(r"\[([A-Za-z0-9_\-]+)(?:\s+p\.\s?\d+)?\]")
-
 
 def _is_annotated(evidence: list[Evidence]) -> bool:
     return any(
@@ -82,7 +78,7 @@ def check_perspective(
 
     known_ids = {e.evidence_id for e in evidence} | {e.source_id for e in evidence}
     text = " ".join([result.summary, *result.tech_results.values()])
-    for cited in sorted(set(_CITATION.findall(text))):
+    for cited in sorted(set(cited_ids(text))):
         if cited not in known_ids:
             missing.append(f"인용 ID 없음: {cited}")
 
