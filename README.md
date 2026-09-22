@@ -87,9 +87,9 @@ cp .env.example .env
 | `EMBEDDING_MODEL_NAME` | RAG 실행 시 사용 | 기본값 `Qwen/Qwen3-Embedding-0.6B` |
 | `EMBEDDING_DEVICE` | RAG 실행 시 사용 | `cpu` / `cuda` / `mps` — **본인 머신에 맞게 수정할 것** |
 | `HF_HOME` | 불필요 | 모델 가중치 캐시 경로 |
-| `QDRANT_ENDPOINT` | RAG 실행 시 필요 | Qdrant Cloud endpoint |
-| `QDRANT_API_KEY` | RAG 실행 시 필요 | Qdrant Cloud API key. 실제 키를 커밋하지 말 것 |
-| `QDRANT_COLLECTION` | RAG 실행 시 사용 | 기본값 `kv_cache_docs_v1` |
+| `QDRANT_ENDPOINT` | RAG 실행 시 필요 | Qdrant Cloud endpoint. 아래 공용 설정 참고 |
+| `QDRANT_API_KEY` | RAG 실행 시 필요 | 조회는 아래 공용 read-only 키, 적재는 담당자에게 write 키 요청 |
+| `QDRANT_COLLECTION` | RAG 실행 시 사용 | 사용할 collection. 아래 표 참고 |
 | `QDRANT_VECTOR_NAME` | 선택 | 기존 collection이 named vector를 여러 개 쓸 때 사용할 vector 이름 |
 | `LLM_MODEL` | 선택 | 종합 LLM 모델. 기본값 `gpt-4.1-mini` |
 | `PDF_FONT_PATH` | 선택 | PDF 한글 폰트 경로. 비우면 OS 기본 폰트 자동 탐색 |
@@ -97,6 +97,64 @@ cp .env.example .env
 
 `.env.example`의 `EMBEDDING_DEVICE`는 Apple Silicon 기준 `mps`로 되어 있다.
 NVIDIA GPU면 `cuda`, 그 외에는 `cpu`로 바꾼다.
+
+**`QDRANT_COLLECTION` 선택**
+
+| 값 | chunking | 상태 |
+| --- | --- | --- |
+| `kv_cache_docs_v1` | page text를 2200자 고정 폭으로 분할 | 551 point. 유지되지만 더 이상 갱신하지 않는다 |
+| `kv_cache_docs_v2` | 논문 layout 요소 인식 + section 경계 분할 | 611 point. **현재 기본값** |
+
+```bash
+# .env
+QDRANT_COLLECTION=kv_cache_docs_v2
+```
+
+두 collection 모두 1024차원 COSINE이고 payload 필드도 동일하므로 값만 바꾸면 된다.
+`retrieve()` 호출부는 수정할 필요가 없다. 자세한 차이는 [v1과 v2 collection](#v1과-v2-collection) 참고.
+
+### 공용 read-only Qdrant 키
+
+팀원이 각자 Qdrant 계정을 만들지 않아도 검색을 시험해볼 수 있도록, **조회 전용 키를 공유한다.**
+아래 값을 그대로 `.env`에 넣으면 된다.
+
+```bash
+QDRANT_ENDPOINT=https://c99e862e-573d-4c1c-b091-c8be42b02c34.eu-west-1-0.aws.cloud.qdrant.io
+QDRANT_API_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJyIiwic3ViamVjdCI6ImFwaS1rZXk6ODI4ZThlYmQtYmM0YS00NGI0LTlhMGQtZjM5YWU0MGE0Yzg5In0.v_ciBJMwGEP3W2WrtAFFZqYFw-t49SlXCKNPM4blp-o
+QDRANT_COLLECTION=kv_cache_docs_v2
+```
+
+**이 키로 할 수 있는 것**
+
+| 동작 | 가능 여부 |
+| --- | --- |
+| `retrieve()` 검색 | 가능 |
+| `scripts/test_retrieval.py`, `compare_retrieval.py`, `eval_retrieval.py` | 가능 |
+| `scripts/check_qdrant.py` (연결·collection 조회) | 가능 |
+| collection 목록 / point 개수 조회 | 가능 |
+| `scripts/ingest.py` (문서 적재) | **불가** |
+| collection 생성·삭제, payload index 생성 | **불가** |
+
+키 payload가 `{"access":"r"}`이며, 쓰기를 시도하면 Qdrant가 다음과 같이 거부한다.
+
+```
+403 Forbidden: Global manage access is required
+```
+
+**적재(ingest)를 하려면** write 권한 키가 따로 필요하다. 저장소에 두지 않으므로 담당자에게 요청한다.
+`scripts/ingest.py`를 read-only 키로 실행하면 `ensure_collection()` 단계에서 403으로 실패한다.
+
+**왜 이 키는 공유해도 되는가**
+
+- 조회 전용이라 데이터를 변조하거나 삭제할 수 없다
+- 결제 수단이 연결되지 않은 Qdrant Cloud 무료 클러스터라 비용이 발생하지 않는다
+- 적재된 내용은 공개된 arXiv 논문 10편의 본문 chunk뿐이며 비공개 정보가 없다
+
+**그래도 지켜야 할 것**
+
+- write 키, `OPENAI_API_KEY`, HuggingFace 토큰은 **절대 저장소에 넣지 않는다.** `.env`는 `.gitignore`에 있다
+- `.env.example`에는 placeholder만 둔다
+- 프로젝트가 끝나면 이 read-only 키도 Qdrant 콘솔에서 폐기한다
 
 ### 5. 설치 확인
 
@@ -198,8 +256,8 @@ uv add --dev <package>        # 개발 의존성 (pytest 등)
 │   ├── llm.py                  # 공용 ChatOpenAI 생성 (모델명은 config)
 │   ├── pdf.py                  # Markdown → PDF (reportlab)
 │   │
-│   ├── ingestion/              # PDF loader / cleaner / splitter / Qdrant indexing
-│   ├── rag/                    # Qwen3 embeddings / Qdrant store / retriever API
+│   ├── ingestion/              # layout-aware PDF loader / cleaner / splitter / indexing
+│   ├── rag/                    # Qwen3 embeddings / Qdrant store / retriever / evaluation
 │   │
 │   ├── agents/                 # LLM이 들어갈 자리 (현재는 mock)
 │   │   ├── tech_research.py    # → tech_profiles
@@ -215,6 +273,8 @@ uv add --dev <package>        # 개발 의존성 (pytest 등)
 │       ├── evidence_check.py   # 관점별 근거 기준 검사 + 재조사 대상 결정
 │       └── review.py           # 보고서 형식 검수 + 재작성 분기
 │
+├── scripts/                    # Qdrant check / ingest / retrieval smoke / eval scripts
+├── data/                       # manifest, raw files, tracked paper PDFs
 ├── scripts/                    # Qdrant check / ingest / retrieval smoke scripts
 ├── data/                       # manifest, raw files, papers/ (RAG 문서 10편 + sources.json)
 ├── outputs/                    # 생성된 보고서 (git 추적 제외)
@@ -271,20 +331,88 @@ Qdrant payload metadata contract:
 # Qdrant endpoint/API key 확인. secret 값은 출력하지 않는다.
 uv run python scripts/check_qdrant.py
 
-# 기존 data/papers PDF 기준 ingest
+# 기존 data/papers PDF 기준 ingest (기본 collection = QDRANT_COLLECTION)
 uv run python scripts/ingest.py --manifest data/manifest.example.json
+
+# 논문 특화 chunking 결과를 별도 collection에 적재
+uv run python scripts/ingest.py \
+  --manifest data/manifest.example.json \
+  --collection kv_cache_docs_v2
 
 # 이미 ingest된 collection에 metadata filter index만 보강
 uv run python scripts/create_qdrant_indexes.py
 ```
 
-PDF loader는 PyMuPDF block 좌표를 사용해 page별 text block을 추출하고, 2-column paper에서 왼쪽 열 → 오른쪽 열 순서로 최대한 복원한다.
-OCR은 하지 않는다. 추출 실패 시 `doc_id`와 page가 드러나는 warning/error를 낸다.
+### v1과 v2 collection
 
-Chunking은 page citation을 유지하기 위해 page 경계를 넘지 않는다. 기본값은 `chunk_size_chars=2200`, `chunk_overlap_chars=250`이다.
-Qwen3가 긴 context를 지원하더라도 retrieval 단위로 너무 큰 chunk를 만들지 않기 위한 값이다.
+| collection | chunking |
+| --- | --- |
+| `kv_cache_docs_v1` | 초기 버전. page text를 2200자 고정 폭으로 분할 |
+| `kv_cache_docs_v2` | 논문 특화. layout 요소 인식 + section 경계 기반 분할 |
 
-Qdrant collection은 `kv_cache_docs_v1`, distance는 `COSINE`이다. collection이 없으면 unnamed vector로 생성하고,
+chunking 방식이 바뀌면 `chunk_index`의 의미가 달라진다. point ID는 `doc_id`/`page`/`chunk_index` 기반이라
+같은 collection에 재적재하면 새 버전에서 사라진 `chunk_index`의 옛 point가 남는다.
+그래서 v1을 덮어쓰지 않고 **새 collection에 적재**한다. v1은 삭제하지 않는다.
+
+사용할 collection은 `.env`의 `QDRANT_COLLECTION`으로 고른다. `retrieve()` 호출부는 바뀌지 않는다.
+
+```bash
+QDRANT_COLLECTION=kv_cache_docs_v2
+```
+
+### 논문 특화 PDF 파싱
+
+`get_text("blocks")`가 아니라 `get_text("dict")`를 쓴다. section heading과 본문을 가르는 신호가
+font size와 bold이고, figure 축 레이블을 걸러내는 신호도 font size이기 때문이다. `"blocks"`는 둘 다 제공하지 않는다.
+
+**Reading order — vertical band 방식.** 논문은 2-column이지만 제목, 저자, 넓은 표, 양쪽 열을 가로지르는
+caption이 페이지 중간에 full-width로 끼어든다. 페이지 전체를 좌/우 두 덩어리로만 정렬하면 이런 full-width
+요소가 한쪽 열로 빨려 들어가 읽기 순서가 깨진다. 그래서 full-width 요소를 기준으로 페이지를 가로 band로
+자르고, **band 내부에서만** 좌열 → 우열로 읽는다.
+
+full-width 판정은 너비 비율이 아니라 **중앙선을 양쪽으로 페이지 폭의 5% 이상 넘는가**로 한다.
+너비만 보면 가운데 정렬된 페이지 번호를 full-width로 오탐한다.
+
+**요소 분류** (ingestion 내부 전용, Qdrant payload에는 저장하지 않는다):
+
+| 요소 | 판정 근거 |
+| --- | --- |
+| section_title | `1.` / `2.3` / `III.` / `Introduction` 등 heading 패턴 + (본문보다 큰 font 또는 bold) + 90자 이내 |
+| table | `find_tables()` 결과 중 2행 2열 이상인 것만. 1행짜리는 figure 영역 오탐이라 버린다 |
+| table_caption / figure_caption | `Table 3` / `Figure 5` 로 시작 |
+| equation | 수학 기호를 포함하고 알파벳 비율이 55% 미만 |
+| front_matter | page 1의 Abstract 앞 블록(제목 제외), email·소속·`Proceedings of the` 등 |
+| other | 본문 font의 80% 미만 크기 (figure 축 레이블·범례), 숫자만 있는 페이지 번호 |
+
+`front_matter`와 `other`는 embedding 대상에서 제외한다. Abstract heading을 찾지 못한 논문은
+page 1에서 아무것도 버리지 않는다 — 보수적으로 동작해 본문 유실을 막는다.
+
+**회전 텍스트 제외.** arXiv가 왼쪽 여백에 세로로 찍는 스탬프는 line direction으로 걸러낸다.
+
+**Cleaning은 요소별로 분리**한다. 문단은 줄바꿈을 공백으로 합쳐 문장을 복원하지만(`clean_paragraph`),
+수식은 줄 구조가 의미를 담으므로 유지하고(`clean_equation`), 표는 행 구조를 유지한다(`clean_table`).
+
+### 논문 특화 chunking
+
+고정 문자 폭 분할 대신 요소 단위로 쌓는다.
+
+1. section title을 만나면 chunk를 끊고, **새 chunk 앞에 section title을 반복해 넣는다**.
+2. 요소를 budget까지 채우다 넘치면 새 chunk를 연다.
+3. **수식은 단독 chunk가 되지 않는다.** 직전 설명 문단 + 수식 + 직후 설명 문단이 한 chunk에 묶이도록
+   glue 규칙을 둔다. 다만 budget의 1.5배를 넘으면 강제로 끊어 한 chunk가 무한정 커지지 않게 한다.
+4. 표는 행 단위로 나누되 **header 행을 각 조각에 반복**한다.
+5. 한 문단이 budget보다 길면 기존 문자 단위 분할로 fallback한다.
+6. 80자 미만 조각은 버린다.
+
+`chunk_size_chars`는 **고정 길이가 아니라 상한(budget)** 으로 쓰인다. 기본값 2200/250은 그대로 두었다.
+새 알고리즘은 section 경계에서 먼저 끊기 때문에 실제 chunk는 대부분 그보다 작고, 값을 바꾸면 v1과
+비교가 어려워진다. 현재 10편/184페이지 기준 611 chunk, 평균 1370자다.
+
+**page 경계는 넘지 않는다.** citation이 `page` 정수 하나만 쓰기 때문이다.
+
+layout 요소가 없는 `PageText`(예: 직접 만든 텍스트)는 기존 문자 단위 분할로 그대로 처리된다.
+
+Qdrant collection distance는 `COSINE`이다. collection이 없으면 unnamed vector로 생성하고,
 이미 있으면 vector dimension과 distance를 검증한다. 기존 collection이 단일 named vector를 쓰면 자동 감지하고,
 여러 named vector가 있으면 `.env`의 `QDRANT_VECTOR_NAME`으로 사용할 vector 이름을 지정한다.
 incompatible해도 자동 삭제/recreate하지 않는다.
@@ -321,6 +449,57 @@ docs = retrieve(
 - `doc_types=["core", "benchmark"]`
 - `tech_id="kivi"` and `doc_types=["core", "followup"]`
 - `tech_id="common"` and `doc_types=["survey"]`
+
+### v1 vs v2 직접 비교해보기
+
+같은 질문을 두 collection에 동시에 던져 결과를 나란히 본다. 임베딩 모델은 한 번만 로드되므로
+두 번째 질문부터는 바로 답한다.
+
+```bash
+# 대화형 — 질문을 계속 입력
+uv run python scripts/compare_retrieval.py
+
+# 한 번만 실행
+uv run python scripts/compare_retrieval.py \
+  --query "How does InfiniGen decide which KV entries to prefetch?" \
+  --tech-id infinigen --top-k 3
+```
+
+대화형 모드에서 쓸 수 있는 명령:
+
+| 명령 | 동작 |
+| --- | --- |
+| `:tech kivi` | `tech_id` 필터 지정 (`:tech`만 입력하면 해제) |
+| `:type core followup` | `doc_type` 필터 지정 (`:type`만 입력하면 해제) |
+| `:k 5` | 결과 개수 |
+| `:q` | 종료 |
+
+비교할 collection은 `--collections`로 바꿀 수 있다. 이 스크립트는 프로세스 안에서만
+`QDRANT_COLLECTION`을 바꾸므로 `.env`나 다른 팀원의 설정에 영향을 주지 않는다.
+
+### Retrieval 평가
+
+```bash
+uv run python scripts/eval_retrieval.py --eval-file data/retrieval_eval.example.json
+```
+
+평가 케이스는 `relevant_doc_ids`로 document-level Recall@K / MRR을 계산한다.
+`tech_id`로 이미 좁혀진 질의는 같은 논문의 엉뚱한 page를 가져와도 만점이 나오므로,
+**선택적으로 `relevant_pages`를 주면** page Hit@K / Recall@K / MRR이 함께 계산된다.
+
+```json
+{
+  "name": "kivi_key_quantization",
+  "query": "Why does KIVI use per-channel quantization for key cache?",
+  "tech_id": "kivi",
+  "doc_types": ["core"],
+  "relevant_doc_ids": ["kivi"],
+  "relevant_pages": [4, 5]
+}
+```
+
+`relevant_pages`가 없는 기존 케이스는 그대로 동작하고 page metric만 생략된다.
+page는 관련 문서에서 나온 것만 hit으로 센다 — 무관한 논문의 4페이지는 hit이 아니다.
 
 ## 아키텍처
 
@@ -444,6 +623,23 @@ key = openai_api_key()   # 없으면 None
 
 ## 다음 단계 (미구현)
 
+코드에 `TODO` 주석으로 위치를 표시해 두었다.
+
+- **tech_research RAG 연결** — 현재 retriever는 공용 인프라로만 존재하며 Agent에서는 아직 호출하지 않는다
+- **tech_research fan-out** — `setup → Send(KIVI)/Send(InfiniGen) → subgraph → dict reducer`.
+  `tech_profiles`에 merge reducer 추가 필요
+- **evidence_check 실질 검증** — 관점별 evidence 개수, independent source, critical evidence 검사 후
+  `recheck_targets` 생성 → 관점별 최대 1회 retry (conditional edge)
+- **report revision loop** — `review → report` 되돌림
+- **citation 검증 및 REFERENCE 자동 생성** — 현재 REFERENCE는 placeholder
+- **실제 LLM 호출** — 각 agent의 mock을 교체
+- **Web Search**, **Judge LLM**, **Query Rewrite**, **PDF 출력**
+
+RAG ingestion 쪽에 남은 한계:
+
+- 테두리 없는 표는 `find_tables()`가 잡지 못해 본문 단편으로 들어간다 (내용은 보존되나 서식이 없다)
+- heading이 번호도 bold도 아닌 논문은 section 경계를 잡지 못하고 문단 단위 분할로 fallback한다
+- 수식은 문맥 보존이 목적이라 LaTeX로 복원하지 않는다. figure 이미지도 해석하지 않는다 (OCR/vision 미사용)
 - **tech_research RAG 연결** — retriever는 공용 인프라로 준비됨, Agent에서 호출 (2번)
 - **tech_research 실제 구현** — Send 연결과 reducer는 완료. `state["target"]` 하나만 조사하도록 교체 (2번)
 - **관점 Agent 실제 구현** — mock 교체, `Evidence` 필드 채우기 (3번, 4번)

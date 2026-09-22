@@ -8,25 +8,25 @@ which extend the shared ``TechProfile`` with per-item citations.
 Models: ``TECH_RESEARCH_MODEL`` (default gpt-4.1-mini) and
 ``TECH_RESEARCH_JUDGE_MODEL`` for the groundedness check (default: same model).
 
+Input: either one Send payload from the main graph (``{"target", "domain"}``,
+one tech) or the whole MainState (``targets``, both techs).
+
 Mode is chosen by ``TECH_RESEARCH_MODE`` (default ``auto``):
     rag   always run RAG; fail loudly if the API key or a retriever is missing
     mock  return the fixed mock profiles below (offline tests, demos)
-    auto  rag when OPENAI_API_KEY looks real and a retriever is available,
-          otherwise mock with a warning
+    auto  rag when LLM calls are enabled (config.llm_enabled, KV_EVAL_OFFLINE),
+          OPENAI_API_KEY looks real and a retriever is available; otherwise mock
 
 Retriever: Qdrant (kv_eval.rag.retriever) when QDRANT_ENDPOINT and QDRANT_API_KEY
 are set, otherwise an offline BM25 retriever over the same ingestion chunks.
 
-TODO(integration): move the Send fan-out from this node to the main graph
-(setup -> Send(tech_research) per target) and add a dict-merge reducer to
-MainState.tech_profiles. ``tech_research_target_node`` is the node for that.
 """
 
 import logging
 import os
-from functools import lru_cache
+import threading
 
-from kv_eval.config import openai_api_key
+from kv_eval.config import llm_enabled, openai_api_key
 from kv_eval.schemas import Tech, TechProfile
 from kv_eval.state import MainState
 from kv_eval.subgraphs.tech_research import (
@@ -113,6 +113,8 @@ def resolve_mode() -> str:
     mode = os.getenv("TECH_RESEARCH_MODE", "auto").lower()
     if mode in ("rag", "mock"):
         return mode
+    if not llm_enabled():  # no key, or KV_EVAL_OFFLINE=1 (tests)
+        return "mock"
     if not _looks_like_real_key(openai_api_key()):
         logger.warning("tech_research: OPENAI_API_KEY not set, using mock profiles")
         return "mock"
@@ -135,14 +137,32 @@ def run_tech_research(targets: list[Tech], deps: TechResearchDeps) -> dict[str, 
 
 
 def tech_research_agent(state: MainState) -> MainState:
+    """Main-graph node. Handles one Send payload or the whole state."""
+    if "target" in state:
+        return tech_research_target_node(state)
     if resolve_mode() == "mock":
         return {"tech_profiles": dict(_MOCK_PROFILES)}
     return {"tech_profiles": run_tech_research(state["targets"], build_default_deps())}
 
 
-@lru_cache(maxsize=1)
+_default_graph = None
+_default_graph_lock = threading.Lock()
+
+
 def _default_tech_graph():
-    return build_tech_graph(build_default_deps())
+    """Build the default tech graph once, even when both Send branches ask at once."""
+    global _default_graph
+    with _default_graph_lock:
+        if _default_graph is None:
+            _default_graph = build_tech_graph(build_default_deps())
+        return _default_graph
+
+
+def _reset_default_tech_graph() -> None:
+    """For tests that swap the dependencies."""
+    global _default_graph
+    with _default_graph_lock:
+        _default_graph = None
 
 
 def tech_research_target_node(state: dict) -> MainState:

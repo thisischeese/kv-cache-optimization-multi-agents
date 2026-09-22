@@ -33,6 +33,11 @@ PAPERS_DIR = PROJECT_ROOT / "data" / "papers"
 MANIFEST_PATH = PROJECT_ROOT / "data" / "manifest.example.json"
 RAG_RETRIEVER_MODULE = "kv_eval.rag.retriever"
 
+# One lock for the whole process: retrieve() embeds with a single shared model
+# (kv_eval.rag.embeddings.get_embedder), and two threads using it at once on
+# Apple MPS abort the process ("failed assertion ... MTLCommandBuffer").
+_RAG_LOCK = threading.Lock()
+
 
 class Retriever(Protocol):
     def __call__(
@@ -68,11 +73,11 @@ def resolve_retriever() -> tuple[Retriever | None, str]:
 def adapt_rag_retriever(retrieve: Callable[..., list[Any]]) -> Retriever:
     """Wrap the RAG owner's retrieve() so it returns this subgraph's RetrievedChunk.
 
-    Calls are serialized: the items run in parallel threads, and retrieve() shares
-    one local embedding model (often on MPS/CUDA) that is not safe to call
-    concurrently. Retrieval is short next to the LLM calls, so the cost is small.
+    Calls are serialized across every adapter with one process-wide lock: items
+    and techs run in parallel threads, and retrieve() shares one embedding model
+    that is not safe to call concurrently. Retrieval is short next to the LLM
+    calls, so the cost is small.
     """
-    lock = threading.Lock()
 
     def _retrieve(
         query: str,
@@ -80,7 +85,7 @@ def adapt_rag_retriever(retrieve: Callable[..., list[Any]]) -> Retriever:
         doc_types: list[str] | None = None,
         top_k: int = 5,
     ) -> list[RetrievedChunk]:
-        with lock:
+        with _RAG_LOCK:
             raw = retrieve(query=query, tech_id=tech_id, doc_types=doc_types, top_k=top_k)
         return [_to_chunk(item) for item in raw]
 

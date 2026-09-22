@@ -1,6 +1,11 @@
-"""Types shared by ingestion, Qdrant indexing and retrieval."""
+"""Types shared by ingestion, Qdrant indexing and retrieval.
+
+LayoutElement is an ingestion-internal structure. It never reaches the Qdrant
+payload or the retriever output, both of which keep their existing contract.
+"""
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -10,11 +15,39 @@ class TextBlock(BaseModel):
     bbox: tuple[float, float, float, float]
 
 
+ElementType = Literal[
+    "title",
+    "front_matter",
+    "abstract",
+    "section_title",
+    "paragraph",
+    "equation",
+    "table",
+    "table_caption",
+    "figure_caption",
+    "other",
+]
+
+# Element kinds that carry no retrievable meaning on their own and are dropped
+# before chunking: author lists, affiliations, figure axis labels, page numbers.
+NON_BODY_ELEMENT_TYPES: frozenset[str] = frozenset({"front_matter", "other"})
+
+
+class LayoutElement(BaseModel):
+    page: int
+    text: str
+    bbox: tuple[float, float, float, float]
+    element_type: ElementType = "paragraph"
+    font_size: float = 0.0
+    is_bold: bool = False
+
+
 class PageText(BaseModel):
     doc_id: str
     page: int
     text: str
     blocks: list[TextBlock] = Field(default_factory=list)
+    elements: list[LayoutElement] = Field(default_factory=list)
 
 
 class DocumentRecord(BaseModel):
