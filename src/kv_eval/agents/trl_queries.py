@@ -2,6 +2,7 @@
 
 from kv_eval.rag.types import DocumentRecord
 
+from typing import TypedDict
 
 DOC_TYPE_PURPOSES: dict[str, str] = {
     "core": "원천 기술의 원리, 자체 보고 성능, 한계 확인",
@@ -43,6 +44,52 @@ TRL_EVIDENCE_RULES: dict[str, dict[str, object]] = {
         ),
     },
 }
+
+class TRLWebQuery(TypedDict):
+    """TRL 평가를 위한 웹 검색 질의 구조."""
+
+    level: str
+    source_type: str
+    query: str
+    domains: list[str]
+
+TRL6_FRAMEWORKS: tuple[tuple[str, str], ...] = (
+    ("vLLM", "docs.vllm.ai"),
+    ("SGLang", "docs.sglang.ai"),
+    ("TensorRT-LLM", "nvidia.github.io"),
+)
+
+def build_trl_web_queries(tech_name: str) -> list[TRLWebQuery]:
+    """TRL 6 이상 평가를 위한 웹 검색 질의를 생성한다."""
+
+    queries: list[TRLWebQuery] = []
+
+    for framework_name, domain in TRL6_FRAMEWORKS:
+        queries.append(
+            {
+                "level": "trl_6",
+                "source_type": "framework_official",
+                "query": (
+                    f"{tech_name} {framework_name} official "
+                    "integration support documentation"
+                ),
+                "domains": [domain],
+            }
+        )
+
+    queries.append(
+        {
+            "level": "trl_7_9",
+            "source_type": "company_primary",
+            "query": (
+                f"{tech_name} production deployment official announcement "
+                "official blog product documentation earnings filing"
+            ),
+            "domains": [],
+        }
+    )
+
+    return queries
 
 def get_trl_documents(
     documents: list[DocumentRecord],
