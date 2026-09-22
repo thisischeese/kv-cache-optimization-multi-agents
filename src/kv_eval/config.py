@@ -11,7 +11,6 @@ OUTPUT_DIR = PROJECT_ROOT / "outputs"
 REPORT_PATH = OUTPUT_DIR / "report.md"
 
 TECH_IDS: tuple[str, str] = ("kivi", "infinigen")
-DOMAIN_ID = "cloud_llm_serving"
 PERSPECTIVES: tuple[str, ...] = ("trl", "market", "stakeholder", "domain")
 
 DEFAULT_EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-0.6B"

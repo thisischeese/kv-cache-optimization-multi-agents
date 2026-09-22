@@ -2,7 +2,6 @@
 
 import sys
 
-import kv_eval.agents.synthesis as synthesis_module
 from kv_eval.graph import graph
 
 synth = sys.modules["kv_eval.agents.synthesis"]

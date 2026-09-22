@@ -8,6 +8,9 @@ from kv_eval.config import (
     PDF_PATH,
     PERSPECTIVES,
     REPORT_PATH,
+    TEAM_CAMPUS,
+    TEAM_CLASS,
+    TEAM_MEMBERS,
     embedding_model_name,
     llm_enabled,
     llm_model,
@@ -32,7 +35,15 @@ def main() -> None:
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(final_state["report_md"], encoding="utf-8")
-    markdown_to_pdf(final_state["report_md"], PDF_PATH)
+    markdown_to_pdf(
+        final_state["report_md"],
+        PDF_PATH,
+        title="KV Cache 최적화 기술 다관점 평가 보고서",
+        subtitle=(
+            "KIVI(SW) vs InfiniGen(HW) · Cloud LLM Serving\n"
+            f"{TEAM_CAMPUS} {TEAM_CLASS} · {', '.join(TEAM_MEMBERS)}"
+        ),
+    )
     issues_path = OUTPUT_DIR / "report_issues.txt"
     issues = final_state.get("report_issues", [])
     if issues:
