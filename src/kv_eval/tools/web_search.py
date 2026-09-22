@@ -1,6 +1,8 @@
-"""web search interface used by TRL and market agents"""
+"""웹 검색 인터페이스와 Perplexity 검색 Provider."""
 
 from collections.abc import Callable
+from hashlib import sha1
+from urllib.parse import urlparse
 
 from pydantic import BaseModel
 
@@ -12,11 +14,20 @@ from kv_eval.config import perplexity_api_key
 class WebEvidence(BaseModel):
     """검색 결과에서 보존할 외부 근거 정보"""
 
+    source_id: str | None = None
     title: str
     url: str
     snippet: str
     source_type: str = "web"
     published_at: str | None = None
+    site: str | None = None
+
+
+def web_source_id(url: str) -> str:
+    """URL에 대해 실행마다 변하지 않는 citation ID를 생성한다."""
+
+    digest = sha1(url.encode("utf-8"), usedforsecurity=False).hexdigest()[:10]
+    return f"W-{digest}"
 
 # SearchProvider는 검색 제공자 함수의 타입 힌트로 사용됩니다. 이 함수는 세 개의 인자를 받습니다:
 # - 검색어 (str)
@@ -78,11 +89,13 @@ def perplexity_search(
 
     return [
         WebEvidence(
+            source_id=web_source_id(result.url),
             title=result.title,
             url=result.url,
             snippet=result.snippet,
             source_type="web",
             published_at=result.date,
+            site=urlparse(result.url).netloc or None,
         )
         for result in search.results
     ]

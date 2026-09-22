@@ -49,12 +49,7 @@ TRL_EVIDENCE_RULES: dict[str, dict[str, object]] = {
     },
     "trl_7_9": {
         "source": "web",
-        "source_types": (
-            "official_announcement",
-            "official_blog",
-            "product_document",
-            "earnings_filing",
-        ),
+        "source_types": ("company",),
         "description": (
             "기업이 직접 공개한 1차 자료만 사용한다."
         ),
@@ -84,7 +79,7 @@ def build_trl_web_queries(tech_name: str) -> list[TRLWebQuery]:
         queries.append(
             {
                 "level": "trl_6",
-                "source_type": "framework_official",
+                "source_type": "framework_doc",
                 "query": (
                     f"{tech_name} {framework_name} official "
                     "integration support documentation"
@@ -96,7 +91,7 @@ def build_trl_web_queries(tech_name: str) -> list[TRLWebQuery]:
     queries.append(
         {
             "level": "trl_7_9",
-            "source_type": "company_primary",
+            "source_type": "company",
             "query": (
                 f"{tech_name} production deployment official announcement "
                 "official blog product documentation earnings filing"

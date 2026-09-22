@@ -10,6 +10,7 @@ from kv_eval.rag.types import RetrievedChunk
 from kv_eval.schemas import Evidence, TRLResult
 from kv_eval.state import MainState
 from kv_eval.tools import WebEvidence, perplexity_search, search_web
+from kv_eval.tools.web_search import web_source_id
 
 def _deduplicate_chunks(
     chunks: list[RetrievedChunk],
@@ -64,11 +65,12 @@ def _chunk_to_evidence(
         ),
         claim="TRL 평가를 위해 검색된 RAG 근거",
         source_id=chunk.doc_id,
-        source_type="rag",
+        source_type=chunk.doc_type,
         quote=chunk.text,
         page=chunk.page,
         tech_id=tech_id,
-        doc_type=chunk.doc_type,
+        independent=chunk.doc_type == "benchmark",
+        scope_level="tech",
     )
 
 def _collect_web_evidence(
@@ -106,15 +108,21 @@ def _web_to_evidence(
 ) -> Evidence:
     """WebEvidence를 평가용 Evidence로 변환한다."""
 
+    source_id = item.source_id or web_source_id(item.url)
+
     return Evidence(
-        evidence_id=f"web-{tech_id}-{abs(hash(item.url))}",
+        evidence_id=source_id,
         claim="TRL 평가를 위해 검색된 웹 근거",
-        source_id=item.url,
+        source_id=source_id,
         source_type=item.source_type,
         title=item.title,
         url=item.url,
+        site=item.site,
+        published_date=item.published_at,
         quote=item.snippet,
         tech_id=tech_id,
+        independent=item.source_type == "framework_doc",
+        scope_level="tech",
     )
 
 
