@@ -38,10 +38,6 @@ def clean_table(text: str) -> str:
     return "\n".join(line for line in lines if line.strip()).strip()
 
 
-# Kept as the name the rest of the pipeline already imports.
-clean_text = clean_paragraph
-
-
 def remove_repeated_headers_footers(pages: list[PageText]) -> list[PageText]:
     if len(pages) < 4:
         return pages
