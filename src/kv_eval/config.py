@@ -53,3 +53,15 @@ TRL_ESTIMATE_PHRASE = "공개 정보 기반 추정"
 BANNED_EXPRESSIONS: tuple[str, ...] = ("우수", "열등", "승자", "더 낫", "추천")
 ALLOWED_NEGATIONS: tuple[str, ...] = ("추천하지 않", "추천을 하지 않", "우열을 가리지 않")
 MAX_REPORT_REVISIONS = 1
+
+# --- PDF ---
+# Korean-capable TTF candidates per OS. Override with PDF_FONT_PATH in .env.
+PDF_FONT_CANDIDATES: tuple[str, ...] = (
+    "/System/Library/Fonts/Supplemental/AppleGothic.ttf",   # macOS
+    "C:/Windows/Fonts/malgun.ttf",                           # Windows
+    "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",       # Linux (fonts-nanum)
+)
+
+
+def pdf_font_path() -> str | None:
+    return os.getenv("PDF_FONT_PATH")
