@@ -34,6 +34,8 @@ def embedding_model_name() -> str:
 def embedding_device() -> str:
     return os.getenv("EMBEDDING_DEVICE", DEFAULT_EMBEDDING_DEVICE)
 
+def perplexity_api_key() -> str | None:
+    return os.getenv("PERPLEXITY_API_KEY")
 
 def qdrant_endpoint() -> str | None:
     return os.getenv("QDRANT_ENDPOINT")
