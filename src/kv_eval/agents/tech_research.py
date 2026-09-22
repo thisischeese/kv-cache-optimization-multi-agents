@@ -1,16 +1,43 @@
-"""MOCK tech research agent. Returns both tech profiles in a single pass.
+"""Tech research agent: Agentic RAG over each technique's source paper.
 
-No LLM or retrieval is involved; every value below is hardcoded mock data.
+Runs ``kv_eval.subgraphs.tech_research``: both techs in parallel via Send,
+seven items per tech in parallel, each item with a query -> retrieve -> grade
+-> (extract | rewrite and retry) loop. Returns ``CitedTechProfile`` objects,
+which extend the shared ``TechProfile`` with per-item citations.
 
-TODO: replace with a per-tech subgraph fanned out from setup:
-    setup -> Send(kivi) / Send(infinigen) -> tech_research subgraph
-             -> dict reducer -> tech_profiles
-Requires a merge reducer on MainState.tech_profiles.
-TODO: back the profile fields with RAG over the source papers.
+Models: ``TECH_RESEARCH_MODEL`` (default gpt-4.1-mini) and
+``TECH_RESEARCH_JUDGE_MODEL`` for the groundedness check (default: same model).
+
+Mode is chosen by ``TECH_RESEARCH_MODE`` (default ``auto``):
+    rag   always run RAG; fail loudly if the API key or a retriever is missing
+    mock  return the fixed mock profiles below (offline tests, demos)
+    auto  rag when OPENAI_API_KEY looks real and a retriever is available,
+          otherwise mock with a warning
+
+TODO(integration): move the Send fan-out from this node to the main graph
+(setup -> Send(tech_research) per target) and add a dict-merge reducer to
+MainState.tech_profiles. ``tech_research_target_node`` is the node for that.
 """
 
-from kv_eval.schemas import TechProfile
+import logging
+import os
+from functools import lru_cache
+
+from kv_eval.config import openai_api_key
+from kv_eval.schemas import Tech, TechProfile
 from kv_eval.state import MainState
+from kv_eval.subgraphs.tech_research import (
+    TechResearchDeps,
+    build_research_graph,
+    build_tech_graph,
+    resolve_retriever,
+)
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_MODEL = "gpt-4.1-mini"
+RECURSION_LIMIT = 100
+MAX_CONCURRENCY = 8
 
 _MOCK_PROFILES: dict[str, TechProfile] = {
     "kivi": TechProfile(
@@ -48,5 +75,81 @@ _MOCK_PROFILES: dict[str, TechProfile] = {
 }
 
 
+def _looks_like_real_key(key: str | None) -> bool:
+    return bool(key) and key.startswith("sk-")
+
+
+def build_default_deps() -> TechResearchDeps:
+    """Real dependencies: ChatOpenAI plus the best available retriever."""
+    from langchain_openai import ChatOpenAI
+
+    retriever, backend = resolve_retriever()
+    if retriever is None:
+        raise RuntimeError(
+            "No retriever available. Wait for kv_eval.rag.retriever (Qdrant) or run "
+            "with the temporary local fallback: uv run --with pypdf python app.py"
+        )
+    model = os.getenv("TECH_RESEARCH_MODEL", DEFAULT_MODEL)
+    judge_model = os.getenv("TECH_RESEARCH_JUDGE_MODEL", model)
+    logger.info("tech_research: model=%s judge=%s retriever=%s", model, judge_model, backend)
+    return TechResearchDeps(
+        llm=_chat_model(ChatOpenAI, model),
+        judge_llm=_chat_model(ChatOpenAI, judge_model),
+        retriever=retriever,
+    )
+
+
+def _chat_model(chat_cls, model: str):
+    kwargs = {"model": model, "max_retries": 3, "timeout": 120}
+    if model.startswith("gpt-4"):
+        kwargs["temperature"] = 0  # reasoning models reject a temperature override
+    return chat_cls(**kwargs)
+
+
+def resolve_mode() -> str:
+    mode = os.getenv("TECH_RESEARCH_MODE", "auto").lower()
+    if mode in ("rag", "mock"):
+        return mode
+    if not _looks_like_real_key(openai_api_key()):
+        logger.warning("tech_research: OPENAI_API_KEY not set, using mock profiles")
+        return "mock"
+    if resolve_retriever()[0] is None:
+        logger.warning(
+            "tech_research: no retriever (Qdrant retriever not merged, pypdf not "
+            "installed), using mock profiles"
+        )
+        return "mock"
+    return "rag"
+
+
+def run_tech_research(targets: list[Tech], deps: TechResearchDeps) -> dict[str, TechProfile]:
+    graph = build_research_graph(deps)
+    result = graph.invoke(
+        {"targets": targets},
+        {"recursion_limit": RECURSION_LIMIT, "max_concurrency": MAX_CONCURRENCY},
+    )
+    return result["tech_profiles"]
+
+
 def tech_research_agent(state: MainState) -> MainState:
-    return {"tech_profiles": dict(_MOCK_PROFILES)}
+    if resolve_mode() == "mock":
+        return {"tech_profiles": dict(_MOCK_PROFILES)}
+    return {"tech_profiles": run_tech_research(state["targets"], build_default_deps())}
+
+
+@lru_cache(maxsize=1)
+def _default_tech_graph():
+    return build_tech_graph(build_default_deps())
+
+
+def tech_research_target_node(state: dict) -> MainState:
+    """Send target for the main graph: input ``{"target": Tech}``, output ``tech_profiles``.
+
+    Mode and dependencies are resolved at call time, not when the graph is built,
+    because app.py imports the graph before it loads .env.
+    """
+    tech = state["target"]
+    if resolve_mode() == "mock":
+        return {"tech_profiles": {tech.tech_id: _MOCK_PROFILES[tech.tech_id]}}
+    result = _default_tech_graph().invoke({"target": tech}, {"recursion_limit": RECURSION_LIMIT})
+    return {"tech_profiles": result["tech_profiles"]}
