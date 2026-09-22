@@ -11,6 +11,7 @@ dependencies = [
     "langchain>=1.4.2",
     "langchain-openai>=1.6.2",
     "langgraph>=1.2.11",
+    "perplexityai>=0.43.5",
     "pydantic>=2.13.5",
     "pymupdf>=1.28.2",
     "python-dotenv>=1.2.3",

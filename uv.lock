@@ -3,10 +3,10 @@ revision = 3
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'emscripten'",
-    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
     "python_full_version >= '3.14' and sys_platform != 'emscripten'",
+    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
     "python_full_version == '3.13.*' and sys_platform != 'emscripten'",
+    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
     "python_full_version == '3.12.*' and sys_platform != 'emscripten'",
     "python_full_version < '3.12'",
 ]
@@ -730,6 +730,7 @@ dependencies = [
     { name = "langchain" },
     { name = "langchain-openai" },
     { name = "langgraph" },
+    { name = "perplexityai" },
     { name = "pydantic" },
     { name = "pymupdf" },
     { name = "python-dotenv" },
@@ -747,6 +748,7 @@ requires-dist = [
     { name = "langchain", specifier = ">=1.4.2" },
     { name = "langchain-openai", specifier = ">=1.6.2" },
     { name = "langgraph", specifier = ">=1.2.11" },
+    { name = "perplexityai", specifier = ">=0.43.5" },
     { name = "pydantic", specifier = ">=2.13.5" },
     { name = "pymupdf", specifier = ">=1.28.2" },
     { name = "python-dotenv", specifier = ">=1.2.3" },
@@ -1034,10 +1036,10 @@ version = "3.7"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'emscripten'",
-    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
     "python_full_version >= '3.14' and sys_platform != 'emscripten'",
+    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
     "python_full_version == '3.13.*' and sys_platform != 'emscripten'",
+    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
     "python_full_version == '3.12.*' and sys_platform != 'emscripten'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/dc/76/3af777226b63a5e64a6b36b1ec5855c14e2b94a37096d4760e595fc43511/networkx-3.7.tar.gz", hash = "sha256:fd77a511bd90f39f3d016351345b52cf5319b813bdca01de3f755d3cca62e96a", size = 1866482, upload-time = "2026-09-21T16:45:16.974Z" }
@@ -1133,10 +1135,10 @@ version = "2.5.3"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'emscripten'",
-    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
     "python_full_version >= '3.14' and sys_platform != 'emscripten'",
+    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
     "python_full_version == '3.13.*' and sys_platform != 'emscripten'",
+    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
     "python_full_version == '3.12.*' and sys_platform != 'emscripten'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/13/01/11703282db468b85f6f7b8c7f22d058de5970d5c7e60a3a8aaa313c3de36/numpy-2.5.3.tar.gz", hash = "sha256:df2d5874ff183595a4ba404edd04f6bd9b5505c1d7708573f6a6c17489a67563", size = 20791231, upload-time = "2026-09-06T16:27:47.073Z" }
@@ -1495,6 +1497,22 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/7d/fa/3944b40b07da9ce895c0e6303a5ab7d53da063554f534556b134a54d6093/packaging-26.3.tar.gz", hash = "sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79", size = 313412, upload-time = "2026-08-04T18:15:28.737Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl", hash = "sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c", size = 129956, upload-time = "2026-08-04T18:15:27.159Z" },
+]
+
+[[package]]
+name = "perplexityai"
+version = "0.43.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "distro" },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "sniffio" },
+    { name = "typing-extensions" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e5/a7/fb86af8d7d5b6724e8636e847a524d35a2e6e95dc0ddb3e23219d6e0363b/perplexityai-0.43.5-py3-none-any.whl", hash = "sha256:bff26b7d4af6590813cff40234205fddc4b919c2b3f9f06307817ce68db904b9", size = 143362, upload-time = "2026-08-31T17:58:52.473Z" },
 ]
 
 [[package]]
@@ -2121,10 +2139,10 @@ version = "1.18.1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'emscripten'",
-    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
     "python_full_version >= '3.14' and sys_platform != 'emscripten'",
+    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
     "python_full_version == '3.13.*' and sys_platform != 'emscripten'",
+    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
     "python_full_version == '3.12.*' and sys_platform != 'emscripten'",
 ]
 dependencies = [
