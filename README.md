@@ -282,6 +282,16 @@ uv run python scripts/test_retrieval.py \
   --doc-type core
 ```
 
+간단한 Recall@5 / MRR 측정:
+
+```bash
+uv run python scripts/eval_retrieval.py \
+  --eval-file data/retrieval_eval.example.json \
+  --top-k 5
+```
+
+이 평가는 작은 smoke-test용 relevance label만 사용한다. 정식 품질 평가는 이후 담당자가 더 촘촘한 query set과 page-level label로 확장한다.
+
 Agent 담당자는 Qdrant 구현 세부사항을 몰라도 다음 함수만 사용하면 된다.
 
 ```python
