@@ -4,6 +4,9 @@ from kv_eval.schemas import Tech
 from kv_eval.state import MainState
 from kv_eval.tools.web_search import WebEvidence
 from kv_eval.agents.trl import (
+    _LLMTRLAssessment,
+    _assessment_to_level,
+    _build_trl_prompt,
     _evaluate_trl_level,
     _is_company_first_party_source,
     _mentions_tech_and_kv_cache,
@@ -208,3 +211,47 @@ def test_web_evidence_requires_technology_and_kv_cache_context() -> None:
     assert _mentions_tech_and_kv_cache(relevant, "KIVI") is True
     assert _mentions_tech_and_kv_cache(unrelated_same_name, "KIVI") is False
     assert _mentions_tech_and_kv_cache(unrelated_kv_cache, "KIVI") is False
+
+
+def test_trl_assessment_is_converted_to_existing_level_output() -> None:
+    assessment = _LLMTRLAssessment(
+        trl_1=True,
+        trl_2=True,
+        trl_3=True,
+        trl_4=False,
+        trl_5=False,
+        trl_6=True,
+        trl_7=False,
+        trl_8=False,
+        trl_9=False,
+        confidence="low",
+        basis="공식 프레임워크 근거는 있으나 연구 단계의 일부 근거가 부족하다.",
+        public_gap="TRL 4부터의 근거가 부족하다.",
+    )
+
+    result = _assessment_to_level(assessment)
+
+    assert result.level == 6
+    assert result.lower_bound == 3
+    assert result.confidence == "low"
+    assert "공식 프레임워크" in result.basis
+
+
+def test_trl_prompt_contains_policy_and_evidence() -> None:
+    evidence = Evidence(
+        evidence_id="kivi-p4",
+        claim="KIVI paper evidence",
+        source_id="kivi",
+        tech_id="kivi",
+        source_type="core",
+        page=4,
+        quote="KIVI applies KV cache quantization.",
+    )
+
+    prompt = _build_trl_prompt("KIVI", [evidence])
+
+    assert "TRL 1에서 5" in prompt
+    assert "TRL 6" in prompt
+    assert "TRL 7에서 9" in prompt
+    assert "kivi-p4" in prompt
+    assert "KIVI applies KV cache quantization." in prompt
