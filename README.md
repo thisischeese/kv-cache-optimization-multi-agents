@@ -9,7 +9,7 @@ KV cache 최적화 기술 2종을 여러 관점에서 비교 평가하는 LangGr
 | 도메인 | Cloud LLM Serving |
 | 평가 관점 | TRL / 시장성 / 이해관계자 / 도메인 |
 
-## 현재 상태: 1차 스캐폴딩
+## 현재 상태: 1차 스캐폴딩 + RAG 인프라
 
 **모든 Agent는 mock 데이터를 반환하며, LLM API를 호출하지 않는다.**
 
@@ -17,7 +17,8 @@ KV cache 최적화 기술 2종을 여러 관점에서 비교 평가하는 LangGr
 따라서 실행에 API 키가 없어도 되고, 네트워크 없이 완전 offline으로 동작한다.
 생성되는 보고서 본문은 전부 `[MOCK]` 접두사가 붙은 더미 텍스트다.
 
-RAG, Vector DB, Web Search, 실제 LLM 호출, Judge, Retry Loop, PDF 생성은 아직 구현되지 않았다.
+공용 RAG 인프라(PDF ingestion, Qwen3 embedding, Qdrant upsert, retriever)는 구현되어 있지만
+아직 Agent나 LangGraph에 연결하지 않았다. Web Search, 실제 LLM 호출, Judge, Retry Loop, PDF 생성은 아직 구현되지 않았다.
 [다음 단계](#다음-단계-미구현) 참고.
 
 ## 요구사항
@@ -73,10 +74,15 @@ cp .env.example .env
 | 변수 | 현재 필요 여부 | 설명 |
 | --- | --- | --- |
 | `OPENAI_API_KEY` | 불필요 | LLM 호출 단계에서 사용. 지금은 없어도 실행된다 |
-| `HUGGINGFACEHUB_API_TOKEN` | 불필요 | gated/private 임베딩 모델을 받을 때만 필요 |
-| `EMBEDDING_MODEL_NAME` | 불필요 | 기본값 `BAAI/bge-m3` |
-| `EMBEDDING_DEVICE` | 불필요 | `cpu` / `cuda` / `mps` — **본인 머신에 맞게 수정할 것** |
+| `HF_TOKEN` | 선택 | Hugging Face Hub token. 공개 모델도 설정하면 rate limit이 완화된다 |
+| `HUGGINGFACEHUB_API_TOKEN` | 선택 | legacy alias. `HF_TOKEN`이 우선이다 |
+| `EMBEDDING_MODEL_NAME` | RAG 실행 시 사용 | 기본값 `Qwen/Qwen3-Embedding-0.6B` |
+| `EMBEDDING_DEVICE` | RAG 실행 시 사용 | `cpu` / `cuda` / `mps` — **본인 머신에 맞게 수정할 것** |
 | `HF_HOME` | 불필요 | 모델 가중치 캐시 경로 |
+| `QDRANT_ENDPOINT` | RAG 실행 시 필요 | Qdrant Cloud endpoint |
+| `QDRANT_API_KEY` | RAG 실행 시 필요 | Qdrant Cloud API key. 실제 키를 커밋하지 말 것 |
+| `QDRANT_COLLECTION` | RAG 실행 시 사용 | 기본값 `kv_cache_docs_v1` |
+| `QDRANT_VECTOR_NAME` | 선택 | 기존 collection이 named vector를 여러 개 쓸 때 사용할 vector 이름 |
 
 `.env.example`의 `EMBEDDING_DEVICE`는 Apple Silicon 기준 `mps`로 되어 있다.
 NVIDIA GPU면 `cuda`, 그 외에는 `cpu`로 바꾼다.
@@ -106,7 +112,7 @@ uv run pytest tests/test_graph.py::test_graph_runs_end_to_end   # 단일 테스�
 ```
 Graph execution completed.
 OPENAI_API_KEY: not set
-Embedding model: BAAI/bge-m3
+Embedding model: Qwen/Qwen3-Embedding-0.6B
 All agents are running on mock data; no API call was made.
 Report: outputs/report.md
 
@@ -175,6 +181,9 @@ uv add --dev <package>        # 개발 의존성 (pytest 등)
 │   ├── schemas.py              # Pydantic 모델
 │   ├── config.py               # 고정 상수 + 환경변수 getter
 │   │
+│   ├── ingestion/              # PDF loader / cleaner / splitter / Qdrant indexing
+│   ├── rag/                    # Qwen3 embeddings / Qdrant store / retriever API
+│   │
 │   ├── agents/                 # LLM이 들어갈 자리 (현재는 mock)
 │   │   ├── tech_research.py    # → tech_profiles
 │   │   ├── trl.py              # → trl_eval
@@ -189,10 +198,121 @@ uv add --dev <package>        # 개발 의존성 (pytest 등)
 │       ├── evidence_check.py   # 4개 관점 결과 존재 여부 검사
 │       └── review.py           # report_md 구조 검사
 │
-├── data/                       # 원본 논문 PDF 등 (RAG 단계에서 사용)
+├── scripts/                    # Qdrant check / ingest / retrieval smoke scripts
+├── data/                       # manifest, raw files, tracked paper PDFs
 ├── outputs/                    # 생성된 보고서 (git 추적 제외)
-└── tests/test_graph.py         # offline integration test
+└── tests/                      # offline tests; Qdrant/HF network 호출 없음
 ```
+
+## RAG / Qdrant 사용법
+
+현재 RAG는 Agent에서 자동 호출하지 않는다. 먼저 수동으로 PDF를 Qdrant에 ingest한 뒤,
+다른 Agent 담당자가 `retrieve()` 함수만 import해서 사용하도록 만든 공용 인프라다.
+
+### Embedding
+
+- 기본 모델은 Hugging Face `Qwen/Qwen3-Embedding-0.6B`다.
+- 구현은 `sentence-transformers`를 사용하며, OpenAI embedding이나 다른 모델로 조용히 fallback하지 않는다.
+- 실제 ingestion/retrieval 시 모델 로딩에 실패하면 명확한 오류를 낸다.
+- vector dimension은 코드에 hardcoding하지 않고 실제 embedding output에서 읽어 Qdrant collection 생성/검증에 사용한다.
+- 문서 embedding은 prompt 없이 encode하고, query embedding은 `prompt_name="query"`로 encode한다.
+
+### PDF와 manifest
+
+기본 PDF 위치는 현재 repository에 있는 `data/papers/`다. 예시 manifest는 `data/manifest.example.json`에 있다.
+
+Manifest 문서 항목은 다음 필드를 사용한다.
+
+```json
+{
+  "doc_id": "kivi",
+  "file": "kivi_2402.02750.pdf",
+  "title": "KIVI: A Tuning-Free Asymmetric 2bit Quantization for KV Cache",
+  "tech_id": "kivi",
+  "camp": "SW",
+  "doc_type": "core",
+  "page_start": 1,
+  "page_end": 15
+}
+```
+
+Qdrant payload metadata contract:
+
+- `doc_id`
+- `title`
+- `page`
+- `tech_id`
+- `camp`
+- `doc_type`
+- `chunk_index`
+- `text`
+
+### Ingestion
+
+```bash
+# Qdrant endpoint/API key 확인. secret 값은 출력하지 않는다.
+uv run python scripts/check_qdrant.py
+
+# 기존 data/papers PDF 기준 ingest
+uv run python scripts/ingest.py --manifest data/manifest.example.json
+
+# 이미 ingest된 collection에 metadata filter index만 보강
+uv run python scripts/create_qdrant_indexes.py
+```
+
+PDF loader는 PyMuPDF block 좌표를 사용해 page별 text block을 추출하고, 2-column paper에서 왼쪽 열 → 오른쪽 열 순서로 최대한 복원한다.
+OCR은 하지 않는다. 추출 실패 시 `doc_id`와 page가 드러나는 warning/error를 낸다.
+
+Chunking은 page citation을 유지하기 위해 page 경계를 넘지 않는다. 기본값은 `chunk_size_chars=2200`, `chunk_overlap_chars=250`이다.
+Qwen3가 긴 context를 지원하더라도 retrieval 단위로 너무 큰 chunk를 만들지 않기 위한 값이다.
+
+Qdrant collection은 `kv_cache_docs_v1`, distance는 `COSINE`이다. collection이 없으면 unnamed vector로 생성하고,
+이미 있으면 vector dimension과 distance를 검증한다. 기존 collection이 단일 named vector를 쓰면 자동 감지하고,
+여러 named vector가 있으면 `.env`의 `QDRANT_VECTOR_NAME`으로 사용할 vector 이름을 지정한다.
+incompatible해도 자동 삭제/recreate하지 않는다.
+
+Point ID는 collection, `doc_id`, `page`, `chunk_index` 기반 UUID5라서 같은 manifest를 다시 ingest해도 동일 chunk가 upsert된다.
+
+### Retrieval smoke test
+
+```bash
+uv run python scripts/test_retrieval.py \
+  --query "KIVI quantization mechanism" \
+  --tech-id kivi \
+  --doc-type core
+```
+
+간단한 Recall@5 / MRR 측정:
+
+```bash
+uv run python scripts/eval_retrieval.py \
+  --eval-file data/retrieval_eval.example.json \
+  --top-k 5
+```
+
+이 평가는 작은 smoke-test용 relevance label만 사용한다. 정식 품질 평가는 이후 담당자가 더 촘촘한 query set과 page-level label로 확장한다.
+
+Agent 담당자는 Qdrant 구현 세부사항을 몰라도 다음 함수만 사용하면 된다.
+
+```python
+from kv_eval.rag.retriever import retrieve
+
+docs = retrieve(
+    query="What are the limitations of KIVI?",
+    tech_id="kivi",
+    doc_types=["core", "followup"],
+    top_k=5,
+)
+```
+
+지원하는 metadata filter 예:
+
+- `tech_id="kivi"`
+- `tech_id="infinigen"`
+- `doc_types=["core"]`
+- `doc_types=["core", "benchmark"]`
+- `tech_id="kivi"` and `doc_types=["core", "followup"]`
+- `tech_id="common"` and `doc_types=["survey"]`
 
 ## 아키텍처
 
@@ -266,7 +386,7 @@ key = openai_api_key()   # 없으면 None
 
 코드에 `TODO` 주석으로 위치를 표시해 두었다.
 
-- **RAG 파이프라인** — PDF Loader, Chunking, Embedding, Vector Store, Retriever
+- **tech_research RAG 연결** — 현재 retriever는 공용 인프라로만 존재하며 Agent에서는 아직 호출하지 않는다
 - **tech_research fan-out** — `setup → Send(KIVI)/Send(InfiniGen) → subgraph → dict reducer`.
   `tech_profiles`에 merge reducer 추가 필요
 - **evidence_check 실질 검증** — 관점별 evidence 개수, independent source, critical evidence 검사 후
