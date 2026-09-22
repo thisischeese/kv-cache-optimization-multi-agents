@@ -1,7 +1,7 @@
 """StateGraph wiring. This module is the only place that owns orchestration.
 
 TODO: add a conditional edge from evidence_check back to the failing
-perspectives (bounded retry), and from review back to report (revision loop).
+perspectives (bounded retry).
 """
 
 from langgraph.graph import END, START, StateGraph
@@ -15,7 +15,7 @@ from kv_eval.agents.synthesis import synthesis_agent
 from kv_eval.agents.tech_research import tech_research_agent
 from kv_eval.agents.trl import trl_agent
 from kv_eval.nodes.evidence_check import evidence_check_node
-from kv_eval.nodes.review import review_node
+from kv_eval.nodes.review import route_after_review, review_node
 from kv_eval.nodes.setup import setup_node
 from kv_eval.state import MainState
 
@@ -47,7 +47,14 @@ def build_graph() -> CompiledStateGraph:
     builder.add_edge("evidence_check", "synthesis")
     builder.add_edge("synthesis", "report")
     builder.add_edge("report", "review")
-    builder.add_edge("review", END)
+
+    # Bounded revision loop: review -> report at most MAX_REPORT_REVISIONS
+    # times (route_after_review), then review -> END either way.
+    builder.add_conditional_edges(
+        "review",
+        route_after_review,
+        {"retry": "report", "done": END},
+    )
 
     return builder.compile()
 
