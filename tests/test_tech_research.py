@@ -573,6 +573,16 @@ def test_offline_chunk_ids_follow_the_indexer_point_ids() -> None:
     assert chunk.chunk_id == chunk_id_for_chunk(same, collection_name=qdrant_collection())
 
 
+def test_every_core_paper_chunk_fits_in_the_prompt_whole() -> None:
+    from kv_eval.subgraphs.tech_research import LocalPdfRetriever
+    from kv_eval.subgraphs.tech_research.prompts import MAX_PASSAGE_CHARS
+
+    chunks = LocalPdfRetriever.from_manifest(doc_ids={"kivi", "infinigen"}).chunks
+
+    # Cutting a chunk hides text the LLM could cite, e.g. the end of InfiniGen p.7.
+    assert max(len(chunk.text) for chunk in chunks) <= MAX_PASSAGE_CHARS
+
+
 def test_offline_retriever_uses_ingestion_chunks_and_filters() -> None:
     from kv_eval.subgraphs.tech_research import LocalPdfRetriever
 

@@ -9,9 +9,10 @@ from dataclasses import dataclass
 from kv_eval.schemas import Tech
 from kv_eval.subgraphs.tech_research.state import RetrievedChunk, SectionPoint
 
-# Keeps prompts bounded. Above the ingestion chunk size (2200 chars) so chunks
-# from the Qdrant collection are shown whole.
-MAX_PASSAGE_CHARS = 2600
+# Keeps prompts bounded while showing every chunk whole. The ingestion splitter
+# targets 2200 chars but lets a table or equation stay glued to its sentence up
+# to 1.5x that (3300), and a single long element can run past it.
+MAX_PASSAGE_CHARS = 4000
 
 
 @dataclass(frozen=True)
