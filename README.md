@@ -127,6 +127,10 @@
 ```
 
 ## Usage
+* RAG 연동을 위해 반드시 Qdrant Cloud에서 미리 클러스터와 Collection(`제안명 : kv_cache_docs_v2`)을 설정해야 합니다. 
+  > 1. [Qdrant Cloud](https://qdrant.tech/cloud/)에서 Cluster와 API Key를 생성한다.
+  > 2. Qdrant Collection 생성 시, 이름 : `kv_cache_docs_v2` > Global Search > Simple Single embedding > 1024 차원 설정
+  > 3. `.env`에 `QDRANT_ENDPOINT`, `QDRANT_API_KEY`, `QDRANT_COLLECTION`을 설정한다.
 
 ```bash
 # 1. 의존성 설치 (Python 3.11, uv)
@@ -162,7 +166,6 @@ uv run pytest
 조회 전용 Qdrant 키는 팀 공유용으로 `.env.example`에 함께 안내한다.
 
 ### 검색 인프라 점검
-
 ```bash
 uv run python scripts/check_qdrant.py                      # 연결·collection 확인
 uv run python scripts/test_retrieval.py --query "..." --tech-id kivi
