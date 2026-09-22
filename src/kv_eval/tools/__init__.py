@@ -1,5 +1,15 @@
 """Reusable tools shared by evaluation agents."""
 
-from kv_eval.tools.web_search import search_web, SearchProvider
+from kv_eval.tools.web_search import (
+    SearchProvider,
+    WebEvidence,
+    perplexity_search,
+    search_web,
+)
 
-__all__ = ["search_web", "SearchProvider"]
+__all__ = [
+    "SearchProvider",
+    "WebEvidence",
+    "perplexity_search",
+    "search_web",
+]
