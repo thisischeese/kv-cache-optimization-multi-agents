@@ -1,6 +1,14 @@
 """Entrypoint: run the graph once and persist the Markdown report."""
 
-from kv_eval.config import OUTPUT_DIR, PERSPECTIVES, REPORT_PATH
+from dotenv import load_dotenv
+
+from kv_eval.config import (
+    OUTPUT_DIR,
+    PERSPECTIVES,
+    REPORT_PATH,
+    embedding_model_name,
+    openai_api_key,
+)
 from kv_eval.graph import graph
 from kv_eval.state import MainState
 
@@ -13,12 +21,17 @@ _STATE_KEY_BY_PERSPECTIVE: dict[str, str] = {
 
 
 def main() -> None:
+    load_dotenv()
+
     final_state: MainState = graph.invoke({})
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(final_state["report_md"], encoding="utf-8")
 
     print("Graph execution completed.")
+    print(f"OPENAI_API_KEY: {'loaded' if openai_api_key() else 'not set'}")
+    print(f"Embedding model: {embedding_model_name()}")
+    print("All agents are running on mock data; no API call was made.")
     print(f"Report: {REPORT_PATH.relative_to(OUTPUT_DIR.parent)}")
     print()
     print("Perspective results:")
