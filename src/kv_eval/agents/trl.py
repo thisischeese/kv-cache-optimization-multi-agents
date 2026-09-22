@@ -11,6 +11,7 @@ from kv_eval.schemas import Evidence, TRLResult
 from kv_eval.state import MainState
 from kv_eval.tools import WebEvidence, perplexity_search, search_web
 from kv_eval.tools.web_search import web_source_id
+from kv_eval.config import perplexity_api_key
 
 def _deduplicate_chunks(
     chunks: list[RetrievedChunk],
@@ -127,34 +128,49 @@ def _web_to_evidence(
 
 
 def trl_agent(state: MainState) -> MainState:
-    """기술별 TRL 1에서 5 평가 근거를 수집한다."""
+    """TRL 1에서 9 평가에 사용할 근거를 수집한다."""
 
     tech_results: dict[str, str] = {}
     evidence: list[Evidence] = []
 
+    web_enabled = bool(perplexity_api_key())
+
     for tech in state.get("targets", []):
-        chunks = _collect_rag_chunks(
+        rag_chunks = _collect_rag_chunks(
             tech_id=tech.tech_id,
             tech_name=tech.name,
         )
 
-        evidence.extend(
+        rag_evidence = [
             _chunk_to_evidence(chunk, tech.tech_id)
-            for chunk in chunks
-        )
+            for chunk in rag_chunks
+        ]
+        evidence.extend(rag_evidence)
+
+        web_evidence: list[Evidence] = []
+
+        if web_enabled:
+            web_items = _collect_web_evidence(tech.name)
+            web_evidence = [
+                _web_to_evidence(item, tech.tech_id)
+                for item in web_items
+            ]
+            evidence.extend(web_evidence)
 
         tech_results[tech.tech_id] = (
-            f"[RAG] {tech.name}의 TRL 1에서 5 평가를 위해 "
-            f"{len(chunks)}개의 근거를 수집했다. "
-            "최종 TRL 판단은 후속 단계에서 수행한다."
+            f"{tech.name}의 TRL 평가 근거를 수집했다. "
+            f"RAG 근거 {len(rag_evidence)}건, "
+            f"웹 근거 {len(web_evidence)}건이다. "
+            "최종 TRL 단계 판정은 후속 단계에서 수행한다."
         )
 
     result = TRLResult(
         perspective="trl",
         tech_results=tech_results,
         summary=(
-            "[RAG] 원천 논문, 후속 논문, 외부 검증 논문을 기준으로 "
-            "TRL 1에서 5 평가 근거를 수집했다."
+            "TRL 1에서 5는 저장된 논문 근거를 사용하고, "
+            "TRL 6 이상은 공식 웹 자료를 사용해 "
+            "공개 정보 기반 평가 근거를 수집했다."
         ),
         evidence=evidence,
     )
