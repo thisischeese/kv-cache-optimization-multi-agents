@@ -289,7 +289,7 @@ class Evidence(BaseModel):
 `source_type` 권장 값:
 
 ```text
-paper
+core
 followup
 benchmark
 survey

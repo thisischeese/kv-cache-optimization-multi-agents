@@ -395,3 +395,19 @@ key = openai_api_key()   # 없으면 None
 - **citation 검증 및 REFERENCE 자동 생성** — 현재 REFERENCE는 placeholder
 - **실제 LLM 호출** — 각 agent의 mock을 교체
 - **Web Search**, **Judge LLM**, **Query Rewrite**, **PDF 출력**
+
+## 진행 로그
+
+기능 단위로 아래에 계속 이어 붙인다. 지난 기록은 지우지 않는다.
+
+### [2026-09-22] 도메인(클라우드 서빙) Agent를 검색 → 추출 → 판정 흐름으로 연결
+
+- 파일: `src/kv_eval/agents/domain.py`(수정), `prompts/domain.md`(수정), `tests/test_domain.py`(신규), `tests/conftest.py`(신규, 5번 `feat/graph-integration`의 파일과 같은 내용)
+- 이게 뭔데: KIVI·InfiniGen을 처리량·TTFT·비용 요인·정확도 손실 4개 기준으로, 원 논문·후속 논문·제3자 벤치마크 근거에 따라 평가하는 Agent
+- 왜 필요한가: 이전 노드는 아무 노드도 만들지 않는 `state["rag_evidence"]`를 읽어서 실제 실행 시 항상 빈 결과였고, 보고서의 도메인 장이 비었다
+- 입력 → 출력: Qdrant 논문 청크(`retrieve()`)와 재조사 때의 `evidence_check["domain"].missing`을 받아서 → `domain_eval`(기준별 근거·실험 조건·기술 간 비교 가능 여부, 기술별 한 줄 요약 `tech_results`, `[doc_id p.N]` 인용) 반환
+- 동작 요약
+  - 기술별로 LLM이 청크에서 주장·수치·실험 조건을 추출하고, 검색하지 않은 문서·쪽을 인용한 항목은 코드가 버린다
+  - 원 논문 수치는 코드가 자체 보고(`self_reported`)로 표시하고, 논조(stance)는 근거 점검 기준을 모르는 별도 LLM 호출이 판정한다
+  - 키가 없거나 `KV_EVAL_OFFLINE=1`이면 `[MOCK]` 결과를 반환한다. `conftest.py`가 테스트를 항상 offline으로 돌린다
+- 다음에 뭘 해야 하나: 5번 브랜치 통합 후 `_llm_enabled`·`_structured_llm`을 공용 `config.llm_enabled`·`llm.chat_model`로 교체, 공용 Judge가 생기면 `_llm_judge` 교체, 실제 모드(`uv run python app.py`)에서 근거 점검 통과 여부 확인
