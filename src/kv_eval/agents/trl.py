@@ -7,7 +7,7 @@ from kv_eval.agents.trl_queries import (
 )
 from kv_eval.rag.retriever import retrieve
 from kv_eval.rag.types import RetrievedChunk
-from kv_eval.schemas import Evidence, TRLResult
+from kv_eval.schemas import Evidence, TRLLevel, TRLResult
 from kv_eval.state import MainState
 from kv_eval.tools import WebEvidence, perplexity_search, search_web
 from kv_eval.tools.web_search import web_source_id
@@ -131,6 +131,7 @@ def trl_agent(state: MainState) -> MainState:
     """TRL 1에서 9 평가에 사용할 근거를 수집한다."""
 
     tech_results: dict[str, str] = {}
+    levels: dict[str, TRLLevel] = {}
     evidence: list[Evidence] = []
 
     web_enabled = bool(perplexity_api_key())
@@ -157,22 +158,117 @@ def trl_agent(state: MainState) -> MainState:
             ]
             evidence.extend(web_evidence)
 
+        levels[tech.tech_id] = _evaluate_trl_level(
+            evidence=rag_evidence + web_evidence,
+            tech_id=tech.tech_id,
+        )
+
         tech_results[tech.tech_id] = (
-            f"{tech.name}의 TRL 평가 근거를 수집했다. "
-            f"RAG 근거 {len(rag_evidence)}건, "
-            f"웹 근거 {len(web_evidence)}건이다. "
-            "최종 TRL 단계 판정은 후속 단계에서 수행한다."
+            f"{tech.name}의 추정 TRL은 "
+            f"{levels[tech.tech_id].level or '판정 불가'}이다."
         )
 
     result = TRLResult(
         perspective="trl",
         tech_results=tech_results,
+        levels=levels,
         summary=(
-            "TRL 1에서 5는 저장된 논문 근거를 사용하고, "
-            "TRL 6 이상은 공식 웹 자료를 사용해 "
-            "공개 정보 기반 평가 근거를 수집했다."
+            "본 평가는 공개 정보를 기반으로 한 추정이다. "
+            "논문, 서빙 프레임워크 공식 문서, "
+            "기업 공식 자료를 단계별로 구분해 사용했다."
         ),
         evidence=evidence,
     )
 
     return {"trl_eval": result}
+
+def _evaluate_trl_level(
+    evidence: list[Evidence],
+    tech_id: str,
+) -> TRLLevel:
+    """출처 범위에 따라 보수적으로 TRL을 추정한다."""
+
+    tech_evidence = [
+        item
+        for item in evidence
+        if item.tech_id in (tech_id, None)
+    ]
+
+    source_types = {
+        item.source_type
+        for item in tech_evidence
+        if item.source_type is not None
+    }
+
+    framework_sites = {
+        item.site
+        for item in tech_evidence
+        if item.source_type == "framework_doc"
+        and item.site is not None
+    }
+
+    has_research_evidence = {
+        "core",
+        "followup",
+        "benchmark",
+    }.issubset(source_types)
+
+    has_all_frameworks = len(framework_sites) >= 3
+    has_company_evidence = "company" in source_types
+
+    if has_company_evidence:
+        return TRLLevel(
+            level=7,
+            lower_bound=7,
+            confidence="low",
+            basis=(
+                "기업 공식 자료가 확인되어 TRL 7까지 추정했다. "
+                "공개 정보 기반 추정이다."
+            ),
+            public_gap=(
+                "TRL 8과 9를 구분할 수 있는 실제 운영 규모, "
+                "반복 운용, 실적 자료가 충분하지 않다."
+            ),
+        )
+
+    if has_all_frameworks:
+        return TRLLevel(
+            level=6,
+            lower_bound=6,
+            confidence="medium",
+            basis=(
+                "vLLM, SGLang, TensorRT-LLM 공식 문서에서 "
+                "서빙 관련 근거가 확인되어 TRL 6까지 추정했다. "
+                "공개 정보 기반 추정이다."
+            ),
+            public_gap=(
+                "기업의 실제 서비스 적용을 확인할 수 있는 "
+                "1차 자료가 부족하다."
+            ),
+        )
+
+    if has_research_evidence:
+        return TRLLevel(
+            level=5,
+            lower_bound=5,
+            confidence="medium",
+            basis=(
+                "원 논문, 후속 논문, 외부 벤치마크가 확인되어 "
+                "TRL 5까지 추정했다. 공개 정보 기반 추정이다."
+            ),
+            public_gap=(
+                "서빙 프레임워크 공식 문서와 기업의 "
+                "실제 도입 자료가 부족하다."
+            ),
+        )
+
+    return TRLLevel(
+        level=None,
+        lower_bound=None,
+        confidence="low",
+        basis="TRL 판정에 필요한 출처 범위가 충분하지 않다.",
+        public_gap=(
+            "원 논문, 후속 논문, 외부 벤치마크 중 일부가 "
+            "확인되지 않았다."
+        ),
+    )
