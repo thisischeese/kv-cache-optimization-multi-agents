@@ -1,9 +1,12 @@
 """LangGraph state contract.
 
-Each perspective agent owns exactly one key, so no reducer is required yet.
+Each perspective agent owns exactly one key, so no reducer is required there.
+`tech_profiles` is the one exception: once tech_research fans out per tech via
+Send (kivi / infinigen in parallel), both branches write to this key in the
+same superstep, so it needs an explicit merge reducer.
 """
 
-from typing import TypedDict
+from typing import Annotated, TypedDict
 
 from kv_eval.schemas import (
     CheckResult,
@@ -16,13 +19,32 @@ from kv_eval.schemas import (
 )
 
 
+def merge_tech_profiles(
+    left: dict[str, TechProfile], right: dict[str, TechProfile]
+) -> dict[str, TechProfile]:
+    """Combine partial per-tech profiles from parallel Send branches.
+
+    Both sides are always keyed by tech_id (e.g. "kivi", "infinigen"), so a
+    later write for the same tech_id overwrites the earlier one; distinct
+    tech_ids just accumulate. Safe with a single non-fanned-out writer too,
+    since merging into an empty dict is a no-op.
+    """
+    return {**left, **right}
+
+
+class TechResearchInput(TypedDict):
+    """What each Send(tech_research) invocation receives: one tech, not the
+    whole MainState. setup fans out one of these per target."""
+
+    target: Tech
+    domain: DomainSpec
+
+
 class MainState(TypedDict, total=False):
     targets: list[Tech]
     domain: DomainSpec
 
-    # TODO: when tech_research fans out per tech via Send, annotate with a
-    # dict-merge reducer instead of a single-writer node.
-    tech_profiles: dict[str, TechProfile]
+    tech_profiles: Annotated[dict[str, TechProfile], merge_tech_profiles]
 
     trl_eval: TRLResult
     market_eval: PerspectiveResult

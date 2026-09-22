@@ -27,9 +27,6 @@ def main() -> None:
     exists = collection in names
     print(f"Collection exists: {'yes' if exists else 'no'}")
     if exists:
-        info = client.get_collection(collection)
-        print(f"Points count: {info.points_count}")
-        print(f"Collection status: {info.status}")
         try:
             vector_name = collection_vector_name(client, collection)
             print(f"Vector mode: {'named' if vector_name else 'unnamed'}")

@@ -36,6 +36,7 @@ def _chunk_from_point(point: models.ScoredPoint) -> RetrievedChunk:
     payload = point.payload or {}
     return RetrievedChunk(
         text=str(payload.get("text", "")),
+        chunk_id=str(payload["chunk_id"]) if "chunk_id" in payload else str(point.id),
         doc_id=str(payload["doc_id"]),
         page=int(payload["page"]),
         tech_id=str(payload["tech_id"]),
