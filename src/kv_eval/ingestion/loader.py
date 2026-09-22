@@ -37,7 +37,7 @@ def extract_pdf_pages(
     document: DocumentRecord,
 ) -> list[PageText]:
     try:
-        import fitz
+        import pymupdf
     except ImportError as exc:
         raise RuntimeError("pymupdf is required. Install it with `uv add pymupdf`.") from exc
 
@@ -46,7 +46,7 @@ def extract_pdf_pages(
 
     pages: list[PageText] = []
     try:
-        with fitz.open(pdf_path) as pdf:
+        with pymupdf.open(pdf_path) as pdf:
             page_start = max(document.page_start, 1)
             page_end = document.page_end or pdf.page_count
             page_end = min(page_end, pdf.page_count)
