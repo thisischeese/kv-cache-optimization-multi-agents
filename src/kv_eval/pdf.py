@@ -74,7 +74,8 @@ def _table(rows: list[str], st: dict[str, ParagraphStyle], width: float) -> Tabl
     cells = [r + [Paragraph("", st["cell"])] * (ncol - len(r)) for r in cells]
     first = width * 0.16 if ncol > 2 else width / ncol
     widths = [first] + [(width - first) / (ncol - 1)] * (ncol - 1) if ncol > 1 else [width]
-    table = Table(cells, colWidths=widths, repeatRows=1)
+    # splitInRow: an LLM-written cell (e.g. TRL basis) can be taller than a page.
+    table = Table(cells, colWidths=widths, repeatRows=1, splitInRow=1)
     table.setStyle(TableStyle([
         ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#999999")),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EEEEEE")),
