@@ -46,7 +46,11 @@ MAX_RECHECK_PER_PERSPECTIVE = 1
 
 # --- report / review ---
 SOURCES_PATH = PROJECT_ROOT / "data" / "papers" / "sources.json"
-PDF_PATH = OUTPUT_DIR / "report.pdf"
+# 제출 파일명: RAG-Output_{캠퍼스}_{X반}_{이름1+이름2+...+이름6}.pdf
+TEAM_CAMPUS = "판교"
+TEAM_CLASS = "8반"
+TEAM_MEMBERS: tuple[str, ...] = ("정선우", "이진호", "이승은", "전우진", "최다은", "이승민")
+PDF_PATH = OUTPUT_DIR / f"RAG-Output_{TEAM_CAMPUS}_{TEAM_CLASS}_{'+'.join(TEAM_MEMBERS)}.pdf"
 SUMMARY_MAX_CHARS = 800  # 약 A4 반 쪽
 TRL_ESTIMATE_PHRASE = "공개 정보 기반 추정"
 # 우열·추천 표현. "추천하지 않"처럼 부정문 안에 있으면 허용한다.

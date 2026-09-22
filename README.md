@@ -17,7 +17,7 @@ KV cache 최적화 기술 2종을 여러 관점에서 비교 평가하는 LangGr
 | 근거 점검 + 부족한 관점만 1회 재조사 | 구현 |
 | 보고서 생성(설계 목차) + 검수 + 1회 재작성 | 구현 |
 | REFERENCE 자동 조립 (`data/papers/sources.json` + 웹 근거 메타데이터) | 구현 |
-| PDF 저장 (`outputs/report.pdf`) | 구현 |
+| PDF 저장 (제출 파일명 `outputs/RAG-Output_판교_8반_{이름6명}.pdf`) | 구현 |
 | 종합(synthesis) LLM | 구현. `OPENAI_API_KEY`가 있을 때만 호출, 없으면 규칙 기반 fallback |
 | 기술 조사 / TRL / 시장성 / 이해관계자 / 도메인 Agent | **mock** (각 담당 브랜치에서 교체 중) |
 | RAG, Web Search, Judge | 각 담당 브랜치에서 구현 중 |
@@ -100,7 +100,7 @@ uv run pytest
 ## 실행
 
 ```bash
-# 전체 그래프 실행 → outputs/report.md, outputs/report.pdf 생성
+# 전체 그래프 실행 → outputs/report.md, outputs/RAG-Output_판교_8반_{이름6명}.pdf 생성
 uv run python app.py
 
 # 테스트
@@ -117,7 +117,7 @@ OPENAI_API_KEY: loaded
 Embedding model: Qwen/Qwen3-Embedding-0.6B
 LLM (synthesis): gpt-4.1-mini
 Report: outputs/report.md
-PDF: outputs/report.pdf
+PDF: outputs/RAG-Output_판교_8반_정선우+이진호+이승은+전우진+최다은+이승민.pdf
 
 Perspective results:
 - TRL: OK
@@ -224,7 +224,7 @@ START → setup → tech_research
                     ↓ 통과 또는 재조사 소진
                 synthesis → report → review ──(형식 위반, 최대 1회)──→ report
                                         ↓
-                                       END → app.py가 report.md / report.pdf 저장
+                                       END → app.py가 report.md / 제출용 PDF 저장
 ```
 
 `evidence_check`로 들어가는 엣지는 관점마다 하나씩이다. 네 개를 하나로 묶는 join은 "네 개가 같은 스텝에 모두 실행"돼야 발동해서,
