@@ -3,12 +3,13 @@
 from kv_eval.agents.trl_queries import (
     TRL_RAG_DOC_TYPES,
     build_trl_rag_queries,
+    build_trl_web_queries,
 )
 from kv_eval.rag.retriever import retrieve
 from kv_eval.rag.types import RetrievedChunk
 from kv_eval.schemas import Evidence, TRLResult
 from kv_eval.state import MainState
-
+from kv_eval.tools import WebEvidence, perplexity_search, search_web
 
 def _deduplicate_chunks(
     chunks: list[RetrievedChunk],
@@ -68,6 +69,52 @@ def _chunk_to_evidence(
         page=chunk.page,
         tech_id=tech_id,
         doc_type=chunk.doc_type,
+    )
+
+def _collect_web_evidence(
+    tech_name: str,
+) -> list[WebEvidence]:
+    """TRL 6 이상 평가에 사용할 웹 근거를 수집한다."""
+
+    evidence: list[WebEvidence] = []
+
+    for query in build_trl_web_queries(tech_name):
+        results = search_web(
+            query=query["query"],
+            domains=query["domains"],
+            provider=perplexity_search,
+        )
+
+        evidence.extend(
+            result.model_copy(
+                update={"source_type": query["source_type"]}
+            )
+            for result in results
+        )
+
+    unique_evidence: dict[str, WebEvidence] = {}
+
+    for item in evidence:
+        unique_evidence[item.url] = item
+
+    return list(unique_evidence.values())
+
+
+def _web_to_evidence(
+    item: WebEvidence,
+    tech_id: str,
+) -> Evidence:
+    """WebEvidence를 평가용 Evidence로 변환한다."""
+
+    return Evidence(
+        evidence_id=f"web-{tech_id}-{abs(hash(item.url))}",
+        claim="TRL 평가를 위해 검색된 웹 근거",
+        source_id=item.url,
+        source_type=item.source_type,
+        title=item.title,
+        url=item.url,
+        quote=item.snippet,
+        tech_id=tech_id,
     )
 
 
