@@ -9,3 +9,9 @@ def _offline(monkeypatch: pytest.MonkeyPatch) -> None:
     # tech_research picks rag mode whenever a real key is present; tests that
     # need rag set TECH_RESEARCH_MODE themselves.
     monkeypatch.setenv("TECH_RESEARCH_MODE", "mock")
+    # trl_agent always queries Qdrant and, with a key, Perplexity. Graph tests
+    # run without either; test_trl patches these helpers itself.
+    import kv_eval.agents.trl as trl
+
+    monkeypatch.setattr(trl, "_collect_rag_chunks", lambda **_: [])
+    monkeypatch.setattr(trl, "perplexity_api_key", lambda: None)

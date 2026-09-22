@@ -17,6 +17,13 @@ def test_offline_fallback_builds_matrix_from_per_tech_views() -> None:
 
 
 def test_llm_output_is_filtered_by_code(monkeypatch) -> None:
+    # Any evidence id the offline graph really produces; agents change, so don't hardcode one.
+    offline = graph.invoke({})
+    real_id = next(
+        e.evidence_id
+        for key in ("trl_eval", "market_eval", "stakeholder_eval", "domain_eval")
+        for e in offline[key].evidence
+    )
     fake = synth._LLMSynthesis(
         matrix_summary="요약",
         matrix=[
@@ -26,7 +33,7 @@ def test_llm_output_is_filtered_by_code(monkeypatch) -> None:
         agreements=["일치"],
         conflicts=[synth._LLMConflict(
             topic="정확도", view_a="도메인: 손실 작음", view_b="이해관계자: 한계 지적",
-            kind="interpretation", evidence_ids=["trl-kivi-001", "invented-id"],
+            kind="interpretation", evidence_ids=[real_id, "invented-id"],
         ), synth._LLMConflict(
             topic="같은 관점", view_a="도메인: A", view_b="도메인: B",
             kind="interpretation", evidence_ids=[],
@@ -39,7 +46,7 @@ def test_llm_output_is_filtered_by_code(monkeypatch) -> None:
 
     s = graph.invoke({})["synthesis"]
     assert [c.tech_id for c in s.matrix] == ["kivi"]            # unknown tech dropped
-    assert s.conflicts[0].evidence_ids == ["trl-kivi-001"]      # invented id dropped
+    assert s.conflicts[0].evidence_ids == [real_id]             # invented id dropped
     assert len(s.conflicts) == 1                                # same-perspective dropped
 
 
