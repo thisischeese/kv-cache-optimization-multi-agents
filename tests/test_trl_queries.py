@@ -95,6 +95,8 @@ def test_build_trl_web_queries_separates_trl_6_and_trl_7_to_9() -> None:
     }
 
     assert trl_7_to_9_queries[0]["domains"] == []
+    assert all("KV cache" in query["query"] for query in queries)
+    assert all("LLM inference" in query["query"] for query in queries)
 
 
 def test_get_trl_documents_includes_common_context() -> None:

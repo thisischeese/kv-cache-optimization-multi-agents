@@ -81,8 +81,9 @@ def build_trl_web_queries(tech_name: str) -> list[TRLWebQuery]:
                 "level": "trl_6",
                 "source_type": "framework_doc",
                 "query": (
-                    f"{tech_name} {framework_name} official "
-                    "integration support documentation"
+                    f"{tech_name} KV cache LLM inference "
+                    f"{framework_name} official integration support "
+                    "documentation"
                 ),
                 "domains": [domain],
             }
@@ -93,8 +94,9 @@ def build_trl_web_queries(tech_name: str) -> list[TRLWebQuery]:
             "level": "trl_7_9",
             "source_type": "company",
             "query": (
-                f"{tech_name} production deployment official announcement "
-                "official blog product documentation earnings filing"
+                f"{tech_name} KV cache LLM inference production deployment "
+                "official announcement official blog product documentation "
+                "earnings filing"
             ),
             "domains": [],
         }
