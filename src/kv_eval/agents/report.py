@@ -59,14 +59,28 @@ def _targets(targets: list[Tech]) -> str:
     return _bullets([f"**{t.name}** ({t.camp}): {t.selection_reason}" for t in targets])
 
 
+def _profile(tech_id: str, p: TechProfile) -> str:
+    cites = " ".join(p.citations)
+    parts = [f"### {tech_id}", "", f"- 개요: {p.overview}", f"- 동작 방식: {p.mechanism}"]
+    if p.experiment_setup:
+        parts.append(f"- 실험 설정: {p.experiment_setup}")
+    if p.scope:
+        parts.append(f"- 적용 범위: {p.scope}")
+    for label, items in (("보고된 성능 (개발 주체 자체 보고)", p.reported_results),
+                         ("한계와 전제 조건", p.limitations),
+                         ("경쟁 접근에 대한 원문의 평가", p.competing_views)):
+        if items:
+            parts += ["", f"**{label}**", "", _bullets(items)]
+    if cites:
+        parts += ["", f"출처: {cites}"]
+    parts += ["", "> 성능 수치는 개발 주체의 자체 보고입니다."]
+    return "\n".join(parts)
+
+
 def _profiles(profiles: dict[str, TechProfile]) -> str:
     if not profiles:
         return "(기술 프로필 없음)"
-    return "\n\n".join(
-        f"### {tech_id}\n\n- 개요: {p.overview}\n- 동작 방식: {p.mechanism}\n"
-        f"- 한계:\n{_bullets(p.limitations)}\n\n> 성능 수치는 개발 주체의 자체 보고입니다."
-        for tech_id, p in profiles.items()
-    )
+    return "\n\n".join(_profile(tech_id, p) for tech_id, p in profiles.items())
 
 
 def _evidence(result: PerspectiveResult | TRLResult) -> str:
@@ -84,11 +98,27 @@ def _perspective(result: PerspectiveResult | None) -> str:
     return f"{per_tech}{result.summary}\n\n**근거**\n\n{_evidence(result)}"
 
 
+_CONFIDENCE = {"high": "높음", "medium": "중간", "low": "낮음"}
+
+
+def _trl_levels(result: TRLResult) -> str:
+    if not result.levels:
+        return ""
+    rows = ["| 기술 | 추정 TRL | 하한 | 확신도 | 근거 | 공개 정보 공백 |", "|---|---|---|---|---|---|"]
+    for tech_id, lv in result.levels.items():
+        rows.append(
+            f"| {tech_id} | {lv.level if lv.level is not None else '-'} | "
+            f"{lv.lower_bound if lv.lower_bound is not None else '-'} | "
+            f"{_CONFIDENCE.get(lv.confidence or '', '-')} | {lv.basis or '-'} | {lv.public_gap or '-'} |"
+        )
+    return "\n".join(rows) + "\n\n"
+
+
 def _trl(result: TRLResult | None) -> str:
     if result is None:
         return f"(결과 없음)\n\n※ TRL은 {TRL_ESTIMATE_PHRASE}입니다."
     return (
-        f"※ 아래 TRL은 {TRL_ESTIMATE_PHRASE}입니다.\n\n{_per_tech(result)}\n\n"
+        f"※ 아래 TRL은 {TRL_ESTIMATE_PHRASE}입니다.\n\n{_trl_levels(result)}{_per_tech(result)}\n\n"
         f"{result.summary}\n\n**근거**\n\n{_evidence(result)}"
     )
 

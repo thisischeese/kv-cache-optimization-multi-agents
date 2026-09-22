@@ -59,15 +59,34 @@ class Evidence(BaseModel):
 
 
 class TechProfile(BaseModel):
+    """Design 5.1: seven items extracted from the source paper only.
+    Items that could not be found in the paper stay empty (원문 확인 불가)."""
+
     tech_id: str
     overview: str
     mechanism: str
     limitations: list[str] = Field(default_factory=list)
+    experiment_setup: str = ""                                      # model, GPU, context, batch, baselines
+    reported_results: list[str] = Field(default_factory=list)       # 원문 수치 그대로 (자체 보고)
+    scope: str = ""                                                 # applicable models / hardware / workloads
+    competing_views: list[str] = Field(default_factory=list)        # 원문이 다른 접근을 어떻게 평가하는지
+    citations: list[str] = Field(default_factory=list)              # "[kivi p.4]" 형식, 코드가 채움
+
+
+class TRLLevel(BaseModel):
+    """Design 5.2: the LLM judges per-stage evidence; code computes these."""
+
+    level: int | None = None            # met=True 인 가장 높은 단계
+    lower_bound: int | None = None      # 1단계부터 끊김 없이 충족된 가장 높은 단계
+    confidence: Literal["high", "medium", "low"] | None = None
+    basis: str = ""                     # 확정 단계의 근거와 다음 단계가 인정되지 않은 이유
+    public_gap: str = ""                # 하한과 추정 단계 사이의 공개 정보 공백
 
 
 class TRLResult(BaseModel):
     perspective: str = "trl"
     tech_results: dict[str, str] = Field(default_factory=dict)
+    levels: dict[str, TRLLevel] = Field(default_factory=dict)       # tech_id -> TRLLevel
     summary: str = ""
     evidence: list[Evidence] = Field(default_factory=list)
 

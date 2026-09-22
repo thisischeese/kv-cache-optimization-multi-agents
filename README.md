@@ -290,6 +290,17 @@ TRL은 기술 단위 근거 1건 이상. 본문의 `[id]` / `[id p.N]` 인용은
 - 본문 인용 형식은 `[source_id]` 또는 `[source_id p.N]` 하나다. URL이나 서지 정보는 LLM이 쓰지 않고 코드가 조립한다.
 - LLM은 `from kv_eval.llm import chat_model`로 만든다. 모델명은 `LLM_MODEL` 하나로 관리한다.
 - LLM 호출 여부는 `config.llm_enabled()`로 확인한다. 테스트에서는 항상 `False`다.
+- `schemas.py`의 클래스를 `with_structured_output`에 그대로 넘기지 않는다. 기본값이 있는 필드가 있어
+  OpenAI strict json_schema에서 거부된다. 기본값과 dict 필드가 없는 LLM 전용 모델을 따로 두고 코드에서 변환한다
+  (예: `agents/synthesis.py`의 `_LLMSynthesis`).
+
+### 설계서 항목과 스키마 필드
+
+| 설계서 | 스키마 |
+| --- | --- |
+| 기술 조사 7개 항목 (5.1) | `TechProfile`: `overview`, `mechanism`, `experiment_setup`, `reported_results`, `limitations`, `scope`, `competing_views`, `citations` |
+| TRL 추정 단계·하한·확신도 (5.2) | `TRLResult.levels[tech_id]`: `level`, `lower_bound`, `confidence`, `basis`, `public_gap` |
+| 관점별 기술 한 줄 요약 (매트릭스) | `PerspectiveResult.tech_results[tech_id]` |
 
 ## 개발 규칙
 

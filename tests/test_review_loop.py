@@ -107,3 +107,28 @@ def test_mock_marker_is_not_a_citation() -> None:
     assert final["report_revision"] == 0          # no wasted revision on mock data
     assert final["report_issues"] == []
     assert "[MOCK]" in final["report_md"]         # README: mock data keeps its marker
+
+
+def test_report_renders_optional_profile_and_trl_fields(monkeypatch) -> None:
+    from kv_eval.schemas import TechProfile, TRLLevel, TRLResult
+
+    def rich_profiles(state):
+        tech = state["target"]
+        return {"tech_profiles": {tech.tech_id: TechProfile(
+            tech_id=tech.tech_id, overview="o", mechanism="m",
+            experiment_setup="Llama-2-7B, A100", reported_results=["피크 메모리 2.6배 감소"],
+            citations=["[kivi p.1]"],
+        )}}
+
+    def rich_trl(state):
+        return {"trl_eval": TRLResult(levels={"kivi": TRLLevel(level=5, lower_bound=4, confidence="medium")})}
+
+    monkeypatch.setattr(graph_module, "tech_research_agent", rich_profiles)
+    monkeypatch.setattr(graph_module, "trl_agent", rich_trl)
+    final = graph_module.build_graph().invoke({})
+    md = final["report_md"]
+    assert "- 실험 설정: Llama-2-7B, A100" in md
+    assert "피크 메모리 2.6배 감소" in md
+    assert "| kivi | 5 | 4 | 중간 |" in md
+    assert "[kivi] Zirui Liu et al." in md       # profile citation reaches REFERENCE
+    assert final["report_issues"] == []
