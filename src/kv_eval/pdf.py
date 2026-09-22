@@ -53,6 +53,28 @@ _SENTENCE_END = re.compile(r"(?<=[.!?])((?:\s*\[[^\]]+\])*)\s+(?=\S)")
 _ITEM_SEPARATORS = (" / ", "; ", " | ")
 
 
+class _BoldParagraph(Paragraph):
+    """Heading drawn with fill + stroke (PDF text render mode 2).
+
+    The Korean OS fonts ship without a bold TTF reportlab can load, so bold
+    is simulated by stroking the glyph outlines in the text color.
+    """
+
+    def __init__(self, text: str, style: ParagraphStyle, weight: float = 0.45) -> None:
+        super().__init__(text, style)
+        self._weight = weight
+
+    def draw(self) -> None:
+        canv = self.canv
+        canv.saveState()
+        canv.setStrokeColor(self.style.textColor)
+        canv.setLineWidth(self._weight)
+        canv._code.append("2 Tr")  # text state op, valid outside BT/ET; reset by restoreState
+        super().draw()
+        canv._code.append("0 Tr")
+        canv.restoreState()
+
+
 def _register_font() -> str:
     for candidate in (pdf_font_path(), *PDF_FONT_CANDIDATES):
         if candidate and Path(candidate).exists():
@@ -160,7 +182,7 @@ def markdown_to_pdf(markdown: str, output: Path, *, title: str | None = None,
     table_rows: list[str] = []
 
     if title:
-        story.append(Paragraph(_inline(title), st["title"]))
+        story.append(_BoldParagraph(_inline(title), st["title"], weight=0.7))
         for sub_line in (subtitle or "").splitlines():
             story.append(Paragraph(_inline(sub_line), st["subtitle"]))
         story.append(HRFlowable(width="100%", thickness=2, color=INK, spaceBefore=8, spaceAfter=10))
@@ -197,14 +219,14 @@ def markdown_to_pdf(markdown: str, output: Path, *, title: str | None = None,
             # Keep a section title off the bottom of a page, underlined.
             story.append(CondPageBreak(60 * mm))
             story.append(KeepTogether([
-                Paragraph(_inline(line[2:]), st["h1"]),
+                _BoldParagraph(_inline(line[2:]), st["h1"], weight=0.6),
                 HRFlowable(width="100%", thickness=1.2, color=ACCENT, spaceBefore=2, spaceAfter=8),
             ]))
         elif line.startswith("## "):
             story.append(CondPageBreak(40 * mm))
-            story.append(Paragraph(_inline(line[3:]), st["h2"]))
+            story.append(_BoldParagraph(_inline(line[3:]), st["h2"]))
         elif line.startswith("### "):
-            story.append(Paragraph(_inline(line[4:]), st["h3"]))
+            story.append(_BoldParagraph(_inline(line[4:]), st["h3"], weight=0.35))
         elif line.startswith(">"):
             story.append(Paragraph(_inline(line.lstrip("> ")), st["quote"]))
         else:
