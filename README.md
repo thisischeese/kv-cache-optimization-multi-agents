@@ -172,11 +172,11 @@ uv run python scripts/eval_retrieval.py                    # Recall@5 / MRR / pa
 
 ## Contributors
 
-| 담당자 | 역할 |
-| --- | --- |
-| 최다은 | RAG / Qdrant 인프라 (PDF ingestion, 논문 특화 chunking, Embedding, Retriever), Agent 디자인, 스캐폴딩 |
-| 이승민 | 기술 조사 Agent (Agentic RAG subgraph, Send 병렬 조사), Agent 디자인, 스캐폴딩 |
-| 전우진 | TRL·시장성 Agent, 공용 Web Search 도구, 임베딩 모델 선정 |
-| 정선우 | 이해관계자·도메인 Agent, 문서 선정 |
-| 이진호 | State/Schema 계약, Evidence Check, Synthesis, Report, PDF, 전체 통합, 문서 선정 |
-| 이승은 | 임베딩 모델 선정 |
+| 이름 | GitHub | 담당 | 주요 기여 |
+| --- | --- | --- | --- |
+| 최다은 | [@thisischeese](https://github.com/thisischeese) | RAG / Qdrant 인프라 | LangGraph 스캐폴딩(`graph.py`, `state.py`) · 논문 특화 PDF 레이아웃 파싱과 section 단위 chunking(`ingestion/`) · Qwen3 임베딩과 Qdrant 연동(`rag/`) · Retriever 공용 인터페이스 · 적재·검색·평가 CLI(`scripts/`) · README |
+| 전우진 | [@JEONELIJAH](https://github.com/JEONELIJAH) | TRL · 시장성 Agent | TRL 1~9 단계 판정 Agent(`agents/trl.py`, `trl_queries.py`) · 시장성 4기준 평가 Agent(`agents/market.py`, `market_queries.py`) · 공용 Perplexity Web Search 도구(`tools/web_search.py`) · 임베딩 모델 선정 |
+| 이진호 | [@YOndnn](https://github.com/YOndnn) | Graph 통합 · 보고서 | State/Schema 계약(`schemas.py`) · Evidence Check와 재조사 라우팅 · Synthesis Agent · Report 생성과 REFERENCE 자동 구성 · 보고서 검수 루프 · PDF 출력(`pdf.py`) · 문서 선정 |
+| 정선우 | [@sunoo2468](https://github.com/sunoo2468) | 이해관계자 · 도메인 Agent | 3그룹 논조를 근거 비율로 판정하는 이해관계자 Agent(`agents/stakeholder.py`) · 처리량·TTFT·비용·정확도 4기준 도메인 Agent(`agents/domain.py`) · 두 Agent 프롬프트(`prompts/`) · 문서 선정 |
+| 이승민 | [@sm-dev-enjoy](https://github.com/sm-dev-enjoy) | 기술 조사 Agent | Agentic RAG subgraph 전체(`subgraphs/tech_research/`) — 질의 생성 → 검색 → 관련성 판정 → 질의 재작성 재시도 루프 · 기술별 Send 병렬 조사와 쪽 인용 포함 프로필 추출 |
+| 이승은 | — | 임베딩 모델 선정 | Qwen3-Embedding-0.6B 후보 조사 및 선정 (코드 커밋 없음) |
