@@ -274,6 +274,49 @@ def test_missing_verdict_counts_as_unsupported() -> None:
     assert len(section.rejected) == 2
 
 
+def test_numbers_found_only_in_a_flattened_table_are_rejected() -> None:
+    table = (
+        "Model CoQA TruthfulQA GSM8K 16bit 63.88 30.76 13.50 KIVI-4 63.78 30.80 13.80 "
+        "KIVI-2 63.05 33.95 12.74 Llama-2-7B 16bit 66.37 29.53 22.67 KIVI-4 66.38 29.49 23.65 "
+        "Llama-2-13B 16bit 70.18 30.84 36.54 KIVI-4 70.01 30.72 35.51 Mistral-7B. "
+        "KIVI enables up to 4× larger batch size and 2.6× less peak memory."
+    )
+
+    def retriever(query, tech_id=None, doc_types=None, top_k=5):
+        return [
+            RetrievedChunk(
+                text=table, doc_id="kivi", page=8, chunk_id="kivi-p8", tech_id="kivi",
+                doc_type="core",
+            )
+        ]  # fmt: skip
+
+    def handler(schema, human):
+        if schema is GradeOut:
+            return GradeOut(relevant_passage_numbers=[1])
+        if schema is ExtractOut:
+            return ExtractOut(
+                points=[
+                    PointOut(
+                        text="KIVI-4 scores 66.38 on CoQA for Llama-2-7B.", passage_numbers=[1]
+                    ),
+                    PointOut(text="KIVI allows 4× larger batch size.", passage_numbers=[1]),
+                    PointOut(
+                        text="KIVI is evaluated on Llama-2-7B and Llama-2-13B.", passage_numbers=[1]
+                    ),
+                ]
+            )
+        return default_handler(schema, human)
+
+    deps = TechResearchDeps(llm=FakeLLM(handler), retriever=retriever)
+    section = run_tech_research(TARGETS[:1], deps)["kivi"].sections["reported_results"]
+
+    assert [p.text for p in section.points] == [
+        "KIVI allows 4× larger batch size.",
+        "KIVI is evaluated on Llama-2-7B and Llama-2-13B.",  # digits in model names do not count
+    ]
+    assert len(section.rejected) == 1 and "flattened table ['66.38']" in section.rejected[0]
+
+
 def test_passage_numbers_are_stripped_from_point_text() -> None:
     def handler(schema, human):
         if schema is ExtractOut and "Extraction target: Overview" in human:
@@ -283,6 +326,8 @@ def test_passage_numbers_are_stripped_from_point_text() -> None:
                     PointOut(text="Batch grows (passage_numbers:[2]).", passage_numbers=[2]),
                     PointOut(text="Keys are skewed offline (1,2).", passage_numbers=[1, 2]),
                     PointOut(text="Throughput rises (p.9).", passage_numbers=[1]),
+                    PointOut(text="Batch grows, as reported on page 9.", passage_numbers=[1]),
+                    PointOut(text="Accuracy holds, as shown in page 8.", passage_numbers=[1]),
                 ]
             )
         return default_handler(schema, human)
@@ -295,6 +340,8 @@ def test_passage_numbers_are_stripped_from_point_text() -> None:
         "Batch grows.",
         "Keys are skewed offline.",
         "Throughput rises.",
+        "Batch grows.",
+        "Accuracy holds.",
     ]
     assert [c.page for c in points[0].citations] == [2, 3]
 
