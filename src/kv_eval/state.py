@@ -32,6 +32,14 @@ def merge_tech_profiles(
     return {**left, **right}
 
 
+class TechResearchInput(TypedDict):
+    """What each Send(tech_research) invocation receives: one tech, not the
+    whole MainState. setup fans out one of these per target."""
+
+    target: Tech
+    domain: DomainSpec
+
+
 class MainState(TypedDict, total=False):
     targets: list[Tech]
     domain: DomainSpec

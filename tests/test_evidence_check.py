@@ -116,3 +116,26 @@ def test_first_pass_runs_evidence_check_once() -> None:
         steps.update(update.keys())
     assert steps["evidence_check"] == 1
     assert all(steps[p] == 1 for p in ("trl", "market", "stakeholder", "domain"))
+
+
+def test_tech_research_fans_out_one_run_per_tech(monkeypatch) -> None:
+    received = []
+    mock_profiles = graph_module.tech_research_agent({})["tech_profiles"]
+
+    def one_tech(state):
+        received.append(sorted(state))
+        tech = state["target"]
+        return {"tech_profiles": {tech.tech_id: mock_profiles[tech.tech_id]}}
+
+    monkeypatch.setattr(graph_module, "tech_research_agent", one_tech)
+    graph = graph_module.build_graph()
+    final = graph.invoke({})
+    assert received == [["domain", "target"], ["domain", "target"]]   # one Send per tech
+    assert set(final["tech_profiles"]) == {"kivi", "infinigen"}       # reducer merged both
+    assert "target" not in final
+
+    steps = Counter()
+    for update in graph.stream({}, stream_mode="updates"):
+        steps.update(update.keys())
+    assert steps["tech_research"] == 2
+    assert all(steps[p] == 1 for p in ("trl", "market", "stakeholder", "domain"))

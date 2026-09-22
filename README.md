@@ -252,8 +252,10 @@ START → setup → tech_research
 | `report_issues`, `report_revision` | `review` / `setup` |
 
 **관점 Agent 4개는 각자 자기 key에만 write한다.** 그래서 이 key들에는 reducer가 필요 없다.
-`tech_profiles`에는 dict merge reducer(`merge_tech_profiles`)가 이미 걸려 있다. 기술 조사가 `Send`로
-KIVI/InfiniGen을 병렬 실행해도 같은 superstep의 두 write가 합쳐진다.
+`setup`은 `Send`로 기술마다 `tech_research`를 한 번씩 병렬 실행한다. 각 실행은 전체 State가 아니라
+`TechResearchInput`(`{"target": Tech, "domain": DomainSpec}`)만 받고, `{"tech_profiles": {tech_id: profile}}`를 돌려준다.
+`tech_profiles`의 dict merge reducer(`merge_tech_profiles`)가 두 결과를 합친다.
+(지금의 mock 기술 조사는 입력을 무시하고 두 기술을 모두 돌려주지만, reducer 덕분에 결과는 같다.)
 
 ## 공유 파일 규칙 (다른 담당 필독)
 
@@ -318,7 +320,7 @@ key = openai_api_key()   # 없으면 None
 ## 다음 단계 (미구현)
 
 - **RAG 파이프라인** — PDF Loader, Chunking, Embedding, Qdrant, Retriever (1번)
-- **tech_research fan-out** — `setup → Send(KIVI)/Send(InfiniGen) → subgraph` (2번, reducer는 준비됨)
+- **tech_research 실제 구현** — Send 연결과 reducer는 완료. `state["target"]` 하나만 조사하도록 교체 (2번)
 - **관점 Agent 실제 구현** — mock 교체, `Evidence` 필드 채우기 (3번, 4번)
 - **Web Search**, **Judge LLM**, **Query Rewrite**
 - **SUMMARY LLM 작성** — 지금은 synthesis 요약으로 조립 (5번)

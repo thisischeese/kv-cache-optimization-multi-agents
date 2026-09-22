@@ -2,6 +2,7 @@
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import Send
 
 from kv_eval.agents.domain import domain_agent
 from kv_eval.agents.market import market_agent
@@ -13,9 +14,19 @@ from kv_eval.agents.trl import trl_agent
 from kv_eval.nodes.evidence_check import evidence_check_node, route_after_evidence_check
 from kv_eval.nodes.review import route_after_review, review_node
 from kv_eval.nodes.setup import setup_node
-from kv_eval.state import MainState
+from kv_eval.state import MainState, TechResearchInput
 
 PERSPECTIVE_NODES: list[str] = ["trl", "market", "stakeholder", "domain"]
+
+
+def fan_out_tech_research(state: MainState) -> list[Send]:
+    """One tech_research run per target, in parallel. Each run receives a
+    TechResearchInput ({"target", "domain"}) and returns {"tech_profiles":
+    {tech_id: profile}}; merge_tech_profiles combines the two writes."""
+    return [
+        Send("tech_research", TechResearchInput(target=tech, domain=state["domain"]))
+        for tech in state["targets"]
+    ]
 
 
 def build_graph() -> CompiledStateGraph:
@@ -33,7 +44,7 @@ def build_graph() -> CompiledStateGraph:
     builder.add_node("review", review_node)
 
     builder.add_edge(START, "setup")
-    builder.add_edge("setup", "tech_research")
+    builder.add_conditional_edges("setup", fan_out_tech_research, ["tech_research"])
 
     for node in PERSPECTIVE_NODES:
         builder.add_edge("tech_research", node)
