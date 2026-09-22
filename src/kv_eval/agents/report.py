@@ -90,7 +90,11 @@ def report_agent(state: MainState) -> MainState:
 
     matrix_summary = synthesis.matrix_summary if synthesis else "(no synthesis)"
     agreements = _render_bullets(synthesis.agreements if synthesis else [])
-    conflicts = _render_bullets(synthesis.conflicts if synthesis else [])
+    conflicts = _render_bullets(
+        [f"{c.topic} — {c.view_a} / {c.view_b}" for c in synthesis.conflicts]
+        if synthesis
+        else []
+    )
     limitations = _render_bullets(synthesis.limitations if synthesis else [])
 
     report_md = f"""# SUMMARY

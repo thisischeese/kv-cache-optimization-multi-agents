@@ -5,7 +5,7 @@ Deliberately does not rank KIVI against InfiniGen or recommend either one.
 TODO: replace with an LLM pass that builds the comparison matrix from evidence.
 """
 
-from kv_eval.schemas import Synthesis
+from kv_eval.schemas import Conflict, Synthesis
 from kv_eval.state import MainState
 
 
@@ -38,8 +38,11 @@ def synthesis_agent(state: MainState) -> MainState:
             "[MOCK] Both are at prototype maturity rather than production default.",
         ],
         conflicts=[
-            "[MOCK] The two shift the bottleneck differently: KIVI trades "
-            "numerical precision, InfiniGen trades transfer bandwidth.",
+            Conflict(
+                topic="[MOCK] 병목 이동 방향",
+                view_a="[MOCK] 도메인: KIVI는 수치 정밀도를 내주고 메모리를 줄임",
+                view_b="[MOCK] 도메인: InfiniGen은 전송 대역폭을 내주고 용량을 늘림",
+            ),
         ],
         limitations=[
             "[MOCK] All findings in this run are mock data, not retrieved evidence.",
