@@ -3,7 +3,10 @@ from kv_eval.rag.types import RetrievedChunk
 from kv_eval.schemas import Tech
 from kv_eval.state import MainState
 from kv_eval.tools.web_search import WebEvidence
-from kv_eval.agents.trl import _evaluate_trl_level
+from kv_eval.agents.trl import (
+    _evaluate_trl_level,
+    _is_company_first_party_source,
+)
 from kv_eval.schemas import Evidence
 
 
@@ -166,3 +169,19 @@ def test_trl_level_is_not_6_without_all_required_frameworks() -> None:
     result = _evaluate_trl_level(evidence, "kivi")
 
     assert result.level != 6
+
+
+def test_company_first_party_source_requires_official_signal() -> None:
+    official = WebEvidence(
+        title="Product documentation",
+        url="https://docs.example.com/kivi",
+        snippet="Production deployment guide",
+    )
+    third_party = WebEvidence(
+        title="KIVI review",
+        url="https://medium.com/example/kivi",
+        snippet="A community analysis of KIVI",
+    )
+
+    assert _is_company_first_party_source(official) is True
+    assert _is_company_first_party_source(third_party) is False

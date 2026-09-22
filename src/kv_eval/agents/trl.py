@@ -14,6 +14,50 @@ from kv_eval.state import MainState
 from kv_eval.tools import WebEvidence, perplexity_search, search_web
 from kv_eval.tools.web_search import web_source_id
 from kv_eval.config import perplexity_api_key
+from urllib.parse import urlparse
+
+
+_THIRD_PARTY_HOSTS = {
+    "arxiv.org",
+    "medium.com",
+    "reddit.com",
+    "www.reddit.com",
+    "news.ycombinator.com",
+}
+
+_FIRST_PARTY_MARKERS = (
+    "official",
+    "announcement",
+    "press release",
+    "product",
+    "documentation",
+    "blog",
+    "production",
+    "deployment",
+    "earnings",
+    "investor",
+)
+
+
+def _is_company_first_party_source(item: WebEvidence) -> bool:
+    """기업 공식 자료로 볼 수 있는 웹 결과인지 보수적으로 확인한다."""
+
+    parsed = urlparse(item.url)
+    host = parsed.netloc.lower().removeprefix("www.")
+
+    if not host or host in _THIRD_PARTY_HOSTS:
+        return False
+
+    text = f"{item.title} {item.snippet}".lower()
+    has_first_party_marker = any(
+        marker in text
+        for marker in _FIRST_PARTY_MARKERS
+    )
+    has_official_subdomain = host.startswith(
+        ("blog.", "docs.", "developer.", "investor.", "ir.")
+    )
+
+    return has_first_party_marker or has_official_subdomain
 
 def _deduplicate_chunks(
     chunks: list[RetrievedChunk],
@@ -90,12 +134,18 @@ def _collect_web_evidence(
             provider=perplexity_search,
         )
 
-        evidence.extend(
-            result.model_copy(
-                update={"source_type": query["source_type"]}
+        for result in results:
+            if (
+                query["level"] == "trl_7_9"
+                and not _is_company_first_party_source(result)
+            ):
+                continue
+
+            evidence.append(
+                result.model_copy(
+                    update={"source_type": query["source_type"]}
+                )
             )
-            for result in results
-        )
 
     unique_evidence: dict[str, WebEvidence] = {}
 
