@@ -84,8 +84,3 @@ def embed_query(query: str) -> list[float]:
     if not vectors:
         raise ValueError("query must not be empty")
     return vectors[0]
-
-
-def embedding_dimension() -> int:
-    vector = embed_query("dimension probe")
-    return len(vector)
