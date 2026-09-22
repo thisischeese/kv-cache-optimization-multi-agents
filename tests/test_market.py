@@ -92,3 +92,79 @@ def test_market_agent_returns_web_based_evidence(monkeypatch) -> None:
     assert "상용화 및 채택 현황 1건" in result.tech_results["kivi"]
     assert "생태계 형성 정도 1건" in result.tech_results["kivi"]
     assert "도입 장벽 1건" in result.tech_results["kivi"]
+
+
+def test_market_agent_skips_web_search_without_api_key(monkeypatch) -> None:
+    called = False
+
+    def fail_if_called(_: str):
+        nonlocal called
+        called = True
+        raise AssertionError("웹 검색은 API 키가 없으면 호출되면 안 됩니다.")
+
+    monkeypatch.setattr(
+        market_module,
+        "perplexity_api_key",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        market_module,
+        "_collect_market_evidence",
+        fail_if_called,
+    )
+
+    state: MainState = {
+        "targets": [
+            Tech(
+                tech_id="kivi",
+                name="KIVI",
+                camp="SW",
+                selection_reason="KV cache quantization",
+            )
+        ]
+    }
+
+    result = market_module.market_agent(state)["market_eval"]
+
+    assert called is False
+    assert result.evidence == []
+    assert "시장 수요와 성장성 0건" in result.tech_results["kivi"]
+
+
+def test_collect_market_evidence_deduplicates_by_criterion_and_url(
+    monkeypatch,
+) -> None:
+    queries = [
+        {
+            "criterion": "adoption",
+            "query": "KIVI adoption",
+            "domains": [],
+        },
+        {
+            "criterion": "adoption",
+            "query": "KIVI production deployment",
+            "domains": [],
+        },
+    ]
+    results = [
+        WebEvidence(
+            title="KIVI adoption",
+            url="https://example.com/kivi",
+            snippet="Same source.",
+        )
+    ]
+
+    monkeypatch.setattr(
+        market_module,
+        "build_market_web_queries",
+        lambda _: queries,
+    )
+    monkeypatch.setattr(
+        market_module,
+        "search_web",
+        lambda **_: results,
+    )
+
+    collected = market_module._collect_market_evidence("KIVI")
+
+    assert collected == [("adoption", results[0])]
