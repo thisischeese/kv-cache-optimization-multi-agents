@@ -14,7 +14,7 @@ TECH_IDS: tuple[str, str] = ("kivi", "infinigen")
 DOMAIN_ID = "cloud_llm_serving"
 PERSPECTIVES: tuple[str, ...] = ("trl", "market", "stakeholder", "domain")
 
-DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3"
+DEFAULT_EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 DEFAULT_EMBEDDING_DEVICE = "cpu"
 
 # Read lazily rather than as module constants: the entrypoint calls load_dotenv()
