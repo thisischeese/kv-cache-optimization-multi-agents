@@ -5,6 +5,7 @@ back to OpenAI or to another local embedding model silently.
 """
 
 from functools import lru_cache
+import os
 from typing import Protocol
 
 from kv_eval.config import DEFAULT_EMBEDDING_MODEL, embedding_device, embedding_model_name
@@ -23,6 +24,10 @@ class Embedder(Protocol):
 
 
 def _load_sentence_transformer(model_name: str, device: str) -> Embedder:
+    legacy_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
+    if legacy_token and not os.getenv("HF_TOKEN"):
+        os.environ["HF_TOKEN"] = legacy_token
+
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError as exc:

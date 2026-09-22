@@ -74,7 +74,8 @@ cp .env.example .env
 | 변수 | 현재 필요 여부 | 설명 |
 | --- | --- | --- |
 | `OPENAI_API_KEY` | 불필요 | LLM 호출 단계에서 사용. 지금은 없어도 실행된다 |
-| `HUGGINGFACEHUB_API_TOKEN` | 보통 불필요 | gated/private 임베딩 모델을 받을 때만 필요 |
+| `HF_TOKEN` | 선택 | Hugging Face Hub token. 공개 모델도 설정하면 rate limit이 완화된다 |
+| `HUGGINGFACEHUB_API_TOKEN` | 선택 | legacy alias. `HF_TOKEN`이 우선이다 |
 | `EMBEDDING_MODEL_NAME` | RAG 실행 시 사용 | 기본값 `Qwen/Qwen3-Embedding-0.6B` |
 | `EMBEDDING_DEVICE` | RAG 실행 시 사용 | `cpu` / `cuda` / `mps` — **본인 머신에 맞게 수정할 것** |
 | `HF_HOME` | 불필요 | 모델 가중치 캐시 경로 |
@@ -254,6 +255,9 @@ uv run python scripts/check_qdrant.py
 
 # 기존 data/papers PDF 기준 ingest
 uv run python scripts/ingest.py --manifest data/manifest.example.json
+
+# 이미 ingest된 collection에 metadata filter index만 보강
+uv run python scripts/create_qdrant_indexes.py
 ```
 
 PDF loader는 PyMuPDF block 좌표를 사용해 page별 text block을 추출하고, 2-column paper에서 왼쪽 열 → 오른쪽 열 순서로 최대한 복원한다.

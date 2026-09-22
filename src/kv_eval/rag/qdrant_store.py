@@ -7,6 +7,9 @@ from kv_eval.config import qdrant_api_key, qdrant_endpoint, qdrant_vector_name
 
 VectorName = str | None
 
+KEYWORD_PAYLOAD_FIELDS: tuple[str, ...] = ("doc_id", "tech_id", "camp", "doc_type")
+INTEGER_PAYLOAD_FIELDS: tuple[str, ...] = ("page", "chunk_index")
+
 
 def get_qdrant_client() -> QdrantClient:
     endpoint = qdrant_endpoint()
@@ -67,6 +70,7 @@ def ensure_collection(
             collection_name=collection_name,
             vectors_config=vectors_config,
         )
+        ensure_payload_indexes(client, collection_name)
         return vector_name
 
     info = client.get_collection(collection_name)
@@ -81,7 +85,25 @@ def ensure_collection(
             f"Qdrant collection {collection_name!r} uses distance {params.distance}, "
             f"but {distance} is required."
         )
+    ensure_payload_indexes(client, collection_name)
     return resolved_vector_name
+
+
+def ensure_payload_indexes(client: QdrantClient, collection_name: str) -> None:
+    for field_name in KEYWORD_PAYLOAD_FIELDS:
+        client.create_payload_index(
+            collection_name=collection_name,
+            field_name=field_name,
+            field_schema=models.PayloadSchemaType.KEYWORD,
+            wait=True,
+        )
+    for field_name in INTEGER_PAYLOAD_FIELDS:
+        client.create_payload_index(
+            collection_name=collection_name,
+            field_name=field_name,
+            field_schema=models.PayloadSchemaType.INTEGER,
+            wait=True,
+        )
 
 
 def collection_vector_name(client: QdrantClient, collection_name: str) -> VectorName:
