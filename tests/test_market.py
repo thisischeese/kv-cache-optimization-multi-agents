@@ -4,6 +4,19 @@ from kv_eval.state import MainState
 from kv_eval.tools.web_search import WebEvidence
 
 
+def _state() -> MainState:
+    return {
+        "targets": [
+            Tech(
+                tech_id="kivi",
+                name="KIVI",
+                camp="SW",
+                selection_reason="KV cache quantization",
+            )
+        ]
+    }
+
+
 def test_market_agent_returns_web_based_evidence(monkeypatch) -> None:
     monkeypatch.setattr(
         market_module,
@@ -49,18 +62,7 @@ def test_market_agent_returns_web_based_evidence(monkeypatch) -> None:
         ],
     )
 
-    state: MainState = {
-        "targets": [
-            Tech(
-                tech_id="kivi",
-                name="KIVI",
-                camp="SW",
-                selection_reason="KV cache quantization",
-            )
-        ]
-    }
-
-    result = market_module.market_agent(state)["market_eval"]
+    result = market_module.market_agent(_state())["market_eval"]
 
     assert result.perspective == "market"
     assert result.tech_results["kivi"]
@@ -113,18 +115,7 @@ def test_market_agent_skips_web_search_without_api_key(monkeypatch) -> None:
         fail_if_called,
     )
 
-    state: MainState = {
-        "targets": [
-            Tech(
-                tech_id="kivi",
-                name="KIVI",
-                camp="SW",
-                selection_reason="KV cache quantization",
-            )
-        ]
-    }
-
-    result = market_module.market_agent(state)["market_eval"]
+    result = market_module.market_agent(_state())["market_eval"]
 
     assert called is False
     assert result.evidence == []
@@ -168,3 +159,48 @@ def test_collect_market_evidence_deduplicates_by_criterion_and_url(
     collected = market_module._collect_market_evidence("KIVI")
 
     assert collected == [("adoption", results[0])]
+
+
+def test_market_agent_uses_market_prompt_for_llm_assessment(monkeypatch) -> None:
+    captured_prompt = ""
+
+    monkeypatch.setattr(
+        market_module,
+        "perplexity_api_key",
+        lambda: "test-key",
+    )
+    monkeypatch.setattr(
+        market_module,
+        "_collect_market_evidence",
+        lambda _: [
+            (
+                "adoption",
+                WebEvidence(
+                    title="KIVI adoption report",
+                    url="https://example.com/adoption",
+                    snippet="KIVI adoption evidence.",
+                ),
+            )
+        ],
+    )
+    monkeypatch.setattr(market_module, "llm_enabled", lambda: True)
+
+    def fake_invoke(prompt: str):
+        nonlocal captured_prompt
+        captured_prompt = prompt
+        return market_module._LLMMarketAssessment(
+            demand_growth="수요 근거가 확인되었다.",
+            adoption="채택 근거가 확인되었다.",
+            ecosystem="생태계 근거가 부족하다.",
+            barriers="도입 장벽이 확인되었다.",
+            limitations=["생태계 자료 부족"],
+        )
+
+    monkeypatch.setattr(market_module, "_invoke_market_llm", fake_invoke)
+
+    result = market_module.market_agent(_state())["market_eval"]
+
+    assert "# 시장성 평가 기준" in captured_prompt
+    assert "KIVI adoption report" in captured_prompt
+    assert "수요 근거가 확인되었다." in result.tech_results["kivi"]
+    assert "생태계 자료 부족" in result.tech_results["kivi"]
