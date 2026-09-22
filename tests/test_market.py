@@ -45,3 +45,9 @@ def test_market_agent_returns_web_based_evidence(monkeypatch) -> None:
     assert result.evidence[0].source_type == "other"
     assert result.evidence[0].tech_id == "kivi"
     assert result.evidence[0].url == "https://example.com/kivi"
+    assert result.summary.startswith(
+    "본 평가는 공개 정보를 기반으로 한 평가이다."
+    )
+    assert result.evidence[0].claim == (
+        "상용화 및 채택 현황 관련 공개 웹 근거"
+    )

@@ -1,6 +1,9 @@
 """시장성 평가 Agent."""
 
-from kv_eval.agents.market_queries import build_market_web_queries
+from kv_eval.agents.market_queries import (
+    MARKET_CRITERIA,
+    build_market_web_queries,
+)
 from kv_eval.config import perplexity_api_key
 from kv_eval.schemas import Evidence, PerspectiveResult
 from kv_eval.state import MainState
@@ -43,10 +46,14 @@ def _web_to_evidence(
     """웹 검색 결과를 시장성 평가용 Evidence로 변환한다."""
 
     source_id = item.source_id or web_source_id(item.url)
+    criterion_label = MARKET_CRITERIA.get(
+        criterion,
+        criterion,
+    )
 
     return Evidence(
         evidence_id=source_id,
-        claim=f"{criterion} 관련 시장성 근거",
+        claim=f"{criterion_label} 관련 공개 웹 근거",
         source_id=source_id,
         source_type="other",
         title=item.title,
@@ -93,7 +100,7 @@ def market_agent(state: MainState) -> MainState:
     result = PerspectiveResult(
         perspective="market",
         summary=(
-            "본 평가는 공개 정보를 기반으로 한다. "
+            "본 평가는 공개 정보를 기반으로 한 평가이다. "
             "시장 수요와 성장성, 상용화 및 채택 현황, "
             "생태계 형성 정도, 도입 장벽을 기준으로 근거를 수집했다."
         ),
