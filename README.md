@@ -9,17 +9,25 @@ KV cache 최적화 기술 2종을 여러 관점에서 비교 평가하는 LangGr
 | 도메인 | Cloud LLM Serving |
 | 평가 관점 | TRL / 시장성 / 이해관계자 / 도메인 |
 
-## 현재 상태: 1차 스캐폴딩 + RAG 인프라
+## 현재 상태: 통합 골격 + RAG 인프라 완료, 관점 Agent는 mock
 
-**모든 Agent는 mock 데이터를 반환하며, LLM API를 호출하지 않는다.**
+| 구분 | 상태 |
+| --- | --- |
+| Graph 흐름, 병렬 fan-out/fan-in | 구현 |
+| 근거 점검 + 부족한 관점만 1회 재조사 | 구현 |
+| 보고서 생성(설계 목차) + 검수 + 1회 재작성 | 구현 |
+| REFERENCE 자동 조립 (`data/papers/sources.json` + 웹 근거 메타데이터) | 구현 |
+| PDF 저장 (제출 파일명 `outputs/RAG-Output_판교_8반_{참여 인원}.pdf`) | 구현 |
+| 종합(synthesis) LLM | 구현. `OPENAI_API_KEY`가 있을 때만 호출, 없으면 규칙 기반 fallback |
+| 기술 조사 / TRL / 시장성 / 이해관계자 / 도메인 Agent | **mock** (각 담당 브랜치에서 교체 중) |
+| RAG 인프라 (ingestion, embedding, Qdrant, retriever) | 구현, Qdrant 적재 완료. Agent 연결 전 |
+| Web Search, Judge | 각 담당 브랜치에서 구현 중 |
 
-이 단계의 목적은 State 계약과 Graph 실행 구조가 끝까지 정상 동작하는지 검증하는 것이다.
-따라서 실행에 API 키가 없어도 되고, 네트워크 없이 완전 offline으로 동작한다.
-생성되는 보고서 본문은 전부 `[MOCK]` 접두사가 붙은 더미 텍스트다.
+mock 데이터에는 `[MOCK]` 접두사가 붙는다. `[MOCK]`은 인용 ID로 취급하지 않는다.
+테스트는 API 키가 있어도 항상 offline으로 돈다(`tests/conftest.py`가 `KV_EVAL_OFFLINE=1`을 건다).
 
-공용 RAG 인프라(PDF ingestion, Qwen3 embedding, Qdrant upsert, retriever)는 구현되어 있지만
-아직 Agent나 LangGraph에 연결하지 않았다. Web Search, 실제 LLM 호출, Judge, Retry Loop, PDF 생성은 아직 구현되지 않았다.
-[다음 단계](#다음-단계-미구현) 참고.
+공용 RAG 인프라(PDF ingestion, Qwen3 embedding, Qdrant upsert, retriever)는 구현되어 Qdrant에 문서가 적재돼 있다.
+아직 Agent에는 연결하지 않았다. [다음 단계](#다음-단계-미구현) 참고.
 
 ## 요구사항
 
@@ -73,7 +81,7 @@ cp .env.example .env
 
 | 변수 | 현재 필요 여부 | 설명 |
 | --- | --- | --- |
-| `OPENAI_API_KEY` | 불필요 | LLM 호출 단계에서 사용. 지금은 없어도 실행된다 |
+| `OPENAI_API_KEY` | 선택 | 있으면 종합 단계가 LLM을 호출한다. 없어도 끝까지 실행된다 |
 | `HF_TOKEN` | 선택 | Hugging Face Hub token. 공개 모델도 설정하면 rate limit이 완화된다 |
 | `HUGGINGFACEHUB_API_TOKEN` | 선택 | legacy alias. `HF_TOKEN`이 우선이다 |
 | `EMBEDDING_MODEL_NAME` | RAG 실행 시 사용 | 기본값 `Qwen/Qwen3-Embedding-0.6B` |
@@ -83,6 +91,9 @@ cp .env.example .env
 | `QDRANT_API_KEY` | RAG 실행 시 필요 | Qdrant Cloud API key. 실제 키를 커밋하지 말 것 |
 | `QDRANT_COLLECTION` | RAG 실행 시 사용 | 기본값 `kv_cache_docs_v1` |
 | `QDRANT_VECTOR_NAME` | 선택 | 기존 collection이 named vector를 여러 개 쓸 때 사용할 vector 이름 |
+| `LLM_MODEL` | 선택 | 종합 LLM 모델. 기본값 `gpt-4.1-mini` |
+| `PDF_FONT_PATH` | 선택 | PDF 한글 폰트 경로. 비우면 OS 기본 폰트 자동 탐색 |
+| `KV_EVAL_OFFLINE` | 선택 | `1`이면 키가 있어도 LLM을 호출하지 않음 (테스트는 자동 적용) |
 
 `.env.example`의 `EMBEDDING_DEVICE`는 Apple Silicon 기준 `mps`로 되어 있다.
 NVIDIA GPU면 `cuda`, 그 외에는 `cpu`로 바꾼다.
@@ -93,12 +104,12 @@ NVIDIA GPU면 `cuda`, 그 외에는 `cpu`로 바꾼다.
 uv run pytest
 ```
 
-`2 passed`가 나오면 설정이 끝난 것이다.
+모든 테스트가 `passed`로 나오면 설정이 끝난 것이다. (네트워크 없이 돈다)
 
 ## 실행
 
 ```bash
-# 전체 그래프 실행 → outputs/report.md 생성
+# 전체 그래프 실행 → outputs/report.md, outputs/RAG-Output_판교_8반_{참여 인원}.pdf 생성
 uv run python app.py
 
 # 테스트
@@ -111,10 +122,11 @@ uv run pytest tests/test_graph.py::test_graph_runs_end_to_end   # 단일 테스�
 
 ```
 Graph execution completed.
-OPENAI_API_KEY: not set
+OPENAI_API_KEY: loaded
 Embedding model: Qwen/Qwen3-Embedding-0.6B
-All agents are running on mock data; no API call was made.
+LLM (synthesis): gpt-4.1-mini
 Report: outputs/report.md
+PDF: outputs/RAG-Output_판교_8반_최다은+이승민+전우진+정선우+이진호.pdf
 
 Perspective results:
 - TRL: OK
@@ -122,6 +134,8 @@ Perspective results:
 - Stakeholder: OK
 - Domain: OK
 ```
+
+검수에서 해결되지 않은 이슈가 남으면 `outputs/report_issues.txt`에 저장된다.
 
 ### 디버깅용
 
@@ -179,7 +193,10 @@ uv add --dev <package>        # 개발 의존성 (pytest 등)
 │   ├── graph.py                # StateGraph 조립. orchestration은 여기서만 한다
 │   ├── state.py                # MainState (TypedDict) — State 계약
 │   ├── schemas.py              # Pydantic 모델
-│   ├── config.py               # 고정 상수 + 환경변수 getter
+│   ├── config.py               # 고정 상수, 점검·검수 기준값, 환경변수 getter
+│   ├── references.py           # 인용 파싱, REFERENCE 조립
+│   ├── llm.py                  # 공용 ChatOpenAI 생성 (모델명은 config)
+│   ├── pdf.py                  # Markdown → PDF (reportlab)
 │   │
 │   ├── ingestion/              # PDF loader / cleaner / splitter / Qdrant indexing
 │   ├── rag/                    # Qwen3 embeddings / Qdrant store / retriever API
@@ -195,11 +212,11 @@ uv add --dev <package>        # 개발 의존성 (pytest 등)
 │   │
 │   └── nodes/                  # 결정론적 규칙 노드 (LLM 없음)
 │       ├── setup.py            # targets/domain/카운터 초기화
-│       ├── evidence_check.py   # 4개 관점 결과 존재 여부 검사
-│       └── review.py           # report_md 구조 검사
+│       ├── evidence_check.py   # 관점별 근거 기준 검사 + 재조사 대상 결정
+│       └── review.py           # 보고서 형식 검수 + 재작성 분기
 │
 ├── scripts/                    # Qdrant check / ingest / retrieval smoke scripts
-├── data/                       # manifest, raw files, tracked paper PDFs
+├── data/                       # manifest, raw files, papers/ (RAG 문서 10편 + sources.json)
 ├── outputs/                    # 생성된 보고서 (git 추적 제외)
 └── tests/                      # offline tests; Qdrant/HF network 호출 없음
 ```
@@ -317,10 +334,15 @@ START → setup → tech_research
        trl       market    stakeholder      domain     ← 병렬 fan-out
         └───────────┴───────────┴──────────────┘
                     ↓
-              evidence_check                            ← fan-in barrier
-                    ↓
-                synthesis → report → review → END
+              evidence_check ──(기준 미달 관점만, 최대 1회)──→ 해당 관점 재실행
+                    ↓ 통과 또는 재조사 소진
+                synthesis → report → review ──(형식 위반, 최대 1회)──→ report
+                                        ↓
+                                       END → app.py가 report.md / 제출용 PDF 저장
 ```
+
+`evidence_check`로 들어가는 엣지는 관점마다 하나씩이다. 네 개를 하나로 묶는 join은 "네 개가 같은 스텝에 모두 실행"돼야 발동해서,
+일부 관점만 재조사하면 다시 발동하지 않기 때문이다. 첫 회차에는 네 관점이 같은 superstep에서 끝나므로 `evidence_check`는 한 번만 돈다.
 
 4개 관점 Agent는 동일한 superstep에서 병렬 실행되고, `evidence_check`는 넷이 모두 끝난 뒤 한 번만 실행된다.
 [디버깅용](#디버깅용) superstep 출력 명령으로 확인할 수 있다.
@@ -343,9 +365,56 @@ START → setup → tech_research
 | `report_md` | `report` |
 | `report_issues`, `report_revision` | `review` / `setup` |
 
-**관점 Agent 4개는 각자 자기 key에만 write한다.** 하나의 `evaluations` dict에 동시 write하지 않기 때문에
-현재는 reducer가 필요 없다. 향후 기술별 `Send`를 도입해 `tech_profiles`에 여러 노드가 write하게 되면
-그때 merge reducer를 추가한다.
+**관점 Agent 4개는 각자 자기 key에만 write한다.** 그래서 이 key들에는 reducer가 필요 없다.
+`setup`은 `Send`로 기술마다 `tech_research`를 한 번씩 병렬 실행한다. 각 실행은 전체 State가 아니라
+`TechResearchInput`(`{"target": Tech, "domain": DomainSpec}`)만 받고, `{"tech_profiles": {tech_id: profile}}`를 돌려준다.
+`tech_profiles`의 dict merge reducer(`merge_tech_profiles`)가 두 결과를 합친다.
+(지금의 mock 기술 조사는 입력을 무시하고 두 기술을 모두 돌려주지만, reducer 덕분에 결과는 같다.)
+
+## 공유 파일 규칙 (다른 담당 필독)
+
+`state.py`, `schemas.py`, `graph.py`, `config.py`는 **Graph/통합 담당(이진호)만 수정한다.**
+여러 명이 동시에 고치면 거의 확실히 충돌한다. 필드나 설정이 필요하면 직접 고치지 말고 요청한다.
+
+### 관점 Agent가 `Evidence`에 채울 값
+
+근거 점검은 아래 필드로 판정한다. **값이 하나도 없으면 "미평가"로 통과**하므로, 실제 구현에서는 반드시 채운다.
+
+| 필드 | 값 | 누가 채우나 |
+| --- | --- | --- |
+| `source_id` | 문서: `sources.json`의 `id`(예: `kivi`). 웹: 검색 도구가 붙인 ID(예: `W07`) | 코드 |
+| `tech_id` | `kivi` / `infinigen`. 두 기술 공통이면 `None` (RAG payload의 `common`·대문자 값은 스키마가 자동 정규화) | 코드 |
+| `page` | 문서 쪽 번호 (웹이면 `None`) | 코드 |
+| `title`, `url`, `site`, `published_date` | 웹 근거의 서지 정보. REFERENCE에 그대로 쓰인다 | 코드 |
+| `source_type` | `core` / `followup` / `benchmark` / `survey` / `framework_doc` / `company` / `news` / `community` / `other` | 코드 |
+| `independent` | 원 논문·저자 본인·개발 기관 자료면 `False` | 코드 |
+| `stance` | `positive` / `critical` / `neutral` | 별도 Judge |
+| `scope_level` | 기술명이 명시된 근거면 `tech`, 기술 계열 일반이면 `family` (TRL 판정에 사용) | 코드 |
+
+기준값(`config.py`): 기술별 근거 2건 이상, 독립 출처 1건 이상, 비판 근거 1건 이상(시장성·이해관계자·도메인),
+TRL은 기술 단위 근거 1건 이상. 본문의 `[id]` / `[id p.N]` 인용은 모두 근거 목록에 있어야 한다.
+
+### 재조사 때 읽을 값
+
+재조사로 다시 실행되면 `state["evidence_check"][관점].missing`에 부족 항목이 들어 있다
+(예: `"kivi: 독립 출처 없음"`). 이 항목을 보강하는 질의를 추가하면 된다. 관점 이름은 `trl`, `market`, `stakeholder`, `domain`.
+
+### 인용과 LLM
+
+- 본문 인용 형식은 `[source_id]` 또는 `[source_id p.N]` 하나다. URL이나 서지 정보는 LLM이 쓰지 않고 코드가 조립한다.
+- LLM은 `from kv_eval.llm import chat_model`로 만든다. 모델명은 `LLM_MODEL` 하나로 관리한다.
+- LLM 호출 여부는 `config.llm_enabled()`로 확인한다. 테스트에서는 항상 `False`다.
+- `schemas.py`의 클래스를 `with_structured_output`에 그대로 넘기지 않는다. 기본값이 있는 필드가 있어
+  OpenAI strict json_schema에서 거부된다. 기본값과 dict 필드가 없는 LLM 전용 모델을 따로 두고 코드에서 변환한다
+  (예: `agents/synthesis.py`의 `_LLMSynthesis`).
+
+### 설계서 항목과 스키마 필드
+
+| 설계서 | 스키마 |
+| --- | --- |
+| 기술 조사 7개 항목 (5.1) | `TechProfile`: `overview`, `mechanism`, `experiment_setup`, `reported_results`, `limitations`, `scope`, `competing_views`, `citations` |
+| TRL 추정 단계·하한·확신도 (5.2) | `TRLResult.levels[tech_id]`: `level`, `lower_bound`, `confidence`, `basis`, `public_gap` |
+| 관점별 기술 한 줄 요약 (매트릭스) | `PerspectiveResult.tech_results[tech_id]` |
 
 ## 개발 규칙
 
@@ -375,14 +444,8 @@ key = openai_api_key()   # 없으면 None
 
 ## 다음 단계 (미구현)
 
-코드에 `TODO` 주석으로 위치를 표시해 두었다.
-
-- **tech_research RAG 연결** — 현재 retriever는 공용 인프라로만 존재하며 Agent에서는 아직 호출하지 않는다
-- **tech_research fan-out** — `setup → Send(KIVI)/Send(InfiniGen) → subgraph → dict reducer`.
-  `tech_profiles`에 merge reducer 추가 필요
-- **evidence_check 실질 검증** — 관점별 evidence 개수, independent source, critical evidence 검사 후
-  `recheck_targets` 생성 → 관점별 최대 1회 retry (conditional edge)
-- **report revision loop** — `review → report` 되돌림
-- **citation 검증 및 REFERENCE 자동 생성** — 현재 REFERENCE는 placeholder
-- **실제 LLM 호출** — 각 agent의 mock을 교체
-- **Web Search**, **Judge LLM**, **Query Rewrite**, **PDF 출력**
+- **tech_research RAG 연결** — retriever는 공용 인프라로 준비됨, Agent에서 호출 (2번)
+- **tech_research 실제 구현** — Send 연결과 reducer는 완료. `state["target"]` 하나만 조사하도록 교체 (2번)
+- **관점 Agent 실제 구현** — mock 교체, `Evidence` 필드 채우기 (3번, 4번)
+- **Web Search**, **Judge LLM**, **Query Rewrite**
+- **SUMMARY LLM 작성** — 지금은 synthesis 요약으로 조립 (5번)

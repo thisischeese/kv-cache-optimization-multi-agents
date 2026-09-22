@@ -15,6 +15,7 @@ dependencies = [
     "pymupdf>=1.28.2",
     "python-dotenv>=1.2.3",
     "qdrant-client>=1.19.1",
+    "reportlab>=5.0.1",
     "sentence-transformers>=6.1.0",
 ]
 
