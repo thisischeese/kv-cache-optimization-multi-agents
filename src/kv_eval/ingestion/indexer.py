@@ -40,6 +40,10 @@ def point_id_for_chunk(chunk: DocumentChunk, collection_name: str | None = None)
     return str(uuid.uuid5(POINT_NAMESPACE, identity))
 
 
+def chunk_id_for_chunk(chunk: DocumentChunk, collection_name: str | None = None) -> str:
+    return point_id_for_chunk(chunk, collection_name=collection_name)
+
+
 def chunks_to_points(
     chunks: list[DocumentChunk],
     vectors: list[list[float]],
@@ -50,9 +54,11 @@ def chunks_to_points(
         raise ValueError("chunks and vectors must have the same length")
     return [
         models.PointStruct(
-            id=point_id_for_chunk(chunk, collection_name=collection_name),
+            id=chunk_id_for_chunk(chunk, collection_name=collection_name),
             vector=point_vector(vector, vector_name),
-            payload=chunk.payload(),
+            payload=chunk.model_copy(
+                update={"chunk_id": chunk_id_for_chunk(chunk, collection_name=collection_name)}
+            ).payload(),
         )
         for chunk, vector in zip(chunks, vectors, strict=True)
     ]

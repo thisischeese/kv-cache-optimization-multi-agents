@@ -1,6 +1,6 @@
 from qdrant_client import models
 
-from kv_eval.ingestion.indexer import point_id_for_chunk
+from kv_eval.ingestion.indexer import chunk_id_for_chunk, point_id_for_chunk
 from kv_eval.rag.qdrant_store import point_vector
 from kv_eval.rag.retriever import build_filter
 from kv_eval.rag.types import DocumentChunk
@@ -24,6 +24,7 @@ def test_point_id_is_deterministic() -> None:
     second = point_id_for_chunk(_chunk(), collection_name="kv_cache_docs_v1")
 
     assert first == second
+    assert chunk_id_for_chunk(_chunk(), collection_name="kv_cache_docs_v1") == first
 
 
 def test_point_id_changes_by_page_or_chunk() -> None:
