@@ -4,7 +4,8 @@ review runs after the quality nodes (coverage, and later neutrality /
 bias_control) and does two things:
 - its own format checks: SUMMARY first and REFERENCE last, SUMMARY length,
   the TRL "공개 정보 기반 추정" phrase, every body citation resolves, no
-  English narrative, no ranking/recommendation wording;
+  English narrative (ranking/recommendation wording moved to the neutrality
+  node);
 - it merges every QualityVerdict in `quality_checks` into `report_issues`,
   the one field only review writes.
 
@@ -24,8 +25,6 @@ import re
 from typing import Literal
 
 from kv_eval.config import (
-    ALLOWED_NEGATIONS,
-    BANNED_EXPRESSIONS,
     MAX_NODE_RUNS,
     MAX_PLAN_ROUNDS,
     MAX_REPORT_REVISIONS,
@@ -39,8 +38,6 @@ from kv_eval.state import MainState
 
 _TOP_HEADING = re.compile(r"^# (.+)$", re.MULTILINE)
 
-# TODO[5-진호] 3번 승민 neutrality 머지와 같은 PR에서: 아래 find_issues의 금지 표현 검사를 지운다.
-#
 # TODO[담당 미정] Groundedness (요구사항 D 최소 평가 항목, 역할 분담에 없음 -> 팀 논의 필요)
 #   - 지금은 아래 find_issues의 "인용 ID 실재" 검사(1안, 형식)만 있다.
 #   - 2안: 본문 문장과 그 문장이 인용한 근거의 quote를 LLM Judge로 대조해 뒷받침 여부를 판정한다.
@@ -113,13 +110,6 @@ def find_issues(report_md: str, state: MainState) -> list[str]:
 
     if _has_english_narrative(body):
         issues.append("보고서 서술 영어 잔존")
-
-    cleaned = body
-    for ok in ALLOWED_NEGATIONS:
-        cleaned = cleaned.replace(ok, "")
-    for word in BANNED_EXPRESSIONS:
-        if word in cleaned:
-            issues.append(f"금지 표현: {word}")
     return issues
 
 

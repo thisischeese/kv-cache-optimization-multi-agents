@@ -4,7 +4,7 @@ from functools import partial
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.types import RetryPolicy, Send
+from langgraph.types import Checkpointer, RetryPolicy, Send
 
 from kv_eval.agents.domain import domain_agent
 from kv_eval.agents.market import market_agent
@@ -16,6 +16,7 @@ from kv_eval.agents.trl import trl_agent
 from kv_eval.instrument import instrumented, is_retryable
 from kv_eval.nodes.coverage import coverage_node
 from kv_eval.nodes.evidence_check import evidence_check_node, route_after_evidence_check
+from kv_eval.nodes.neutrality import neutrality_node
 from kv_eval.nodes.orchestrator import orchestrator_node
 from kv_eval.nodes.review import route_after_review, review_node
 from kv_eval.nodes.setup import setup_node
@@ -25,8 +26,8 @@ from kv_eval.state import MainState, TechResearchInput, WorkerInput
 # 외부 호출의 일시 오류는 RetryPolicy가 재시도한다. worker는 소진 시 실패를 기록하고 계속한다.
 # 그 외 외부 노드 실패는 래퍼가 기록하고, 규칙 노드의 오류는 그대로 전파한다.
 # 품질 평가 노드는 LLM Judge를 쓰므로 여기에 넣는다. Judge가 실패해도 보고서 생성은 멈추지 않는다(fail_soft).
-# TODO[3-승민·4-선우] neutrality / bias_control 노드를 QUALITY_NODES에 추가한다.
-QUALITY_NODES: dict[str, object] = {"coverage": coverage_node}
+# TODO[4-선우] bias_control 노드를 QUALITY_NODES에 추가한다.
+QUALITY_NODES: dict[str, object] = {"coverage": coverage_node, "neutrality": neutrality_node}
 EXTERNAL_NODES: frozenset[str] = frozenset({"tech_research", "orchestrator", "worker", "synthesis", *QUALITY_NODES})
 RETRY_POLICY = RetryPolicy(max_attempts=3, retry_on=is_retryable)
 
@@ -72,7 +73,7 @@ def _add_node(builder: StateGraph, name: str, fn) -> None:
 
 # TODO[2-승은] build_graph(checkpointer: Checkpointer = None)로 인자를 받아 builder.compile(checkpointer=...)에 넘긴다.
 #   모듈 전역 `graph`는 체크포인터 없이 유지한다(기존 테스트 호환). app.py가 체크포인터를 넣어 따로 빌드한다.
-def build_graph() -> CompiledStateGraph:
+def build_graph(checkpointer: Checkpointer = None) -> CompiledStateGraph:
     builder = StateGraph(MainState)
 
     _add_node(builder, "setup", setup_node)
@@ -117,7 +118,7 @@ def build_graph() -> CompiledStateGraph:
         {"retry": "report", "replan": "orchestrator", "done": END},
     )
 
-    return builder.compile()
+    return builder.compile(checkpointer=checkpointer)
 
 
 graph = build_graph()

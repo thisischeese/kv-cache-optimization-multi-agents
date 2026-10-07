@@ -36,6 +36,7 @@ def run_config(run_id: str) -> RunnableConfig:
         "run_name": "kv_eval",
         # TODO[2-승은] 체크포인터를 붙이면 "configurable": {"thread_id": run_id}를 추가한다.
         #   run_id 하나가 thread_id, LangSmith run id, 결정 로그 경로를 모두 잇는다(요구사항 C. 상관).
+        "configurable": {"thread_id": run_id},
         "metadata": {"run_id": run_id},
         "recursion_limit": GRAPH_RECURSION_LIMIT,
     }

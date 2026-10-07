@@ -5,6 +5,7 @@ Each run gets a run_id that joins State, the decision log
 (outputs/runs/{run_id}/decisions.jsonl) and the LangSmith trace.
 """
 
+import argparse
 import uuid
 
 from dotenv import load_dotenv
@@ -22,7 +23,9 @@ from kv_eval.config import (
     llm_model,
     openai_api_key,
 )
-from kv_eval.graph import graph
+from kv_eval import checkpoint
+from kv_eval.graph import build_graph
+from kv_eval.instrument import is_retryable
 from kv_eval.observability import log_event, run_config, run_dir
 from kv_eval.pdf import markdown_to_pdf
 from kv_eval.results import get_result
@@ -40,10 +43,38 @@ def main() -> None:
     #     재개:    checkpoint.can_resume으로 확인한 뒤 graph.invoke(None, run_config(run_id)),
     #              log_event(run_id, "app", "run_resume")
     #   - 재시도 대상 예외로 실행이 중단되면 재개 명령(uv run python app.py --resume <run_id>)을 안내하고 종료한다.
-    run_id = str(uuid.uuid4())
-    log_event(run_id, "app", "run_start")
-    final_state: MainState = graph.invoke({"run_id": run_id}, run_config(run_id))
+    parser = argparse.ArgumentParser(description="Run the KV cache evaluation graph once.")
+    parser.add_argument("--resume", metavar="RUN_ID", help="continue an interrupted run")
+    args = parser.parse_args()
 
+    with checkpoint.open_checkpointer() as saver:
+        graph = build_graph(checkpointer=saver)
+        if args.resume:
+            run_id = args.resume
+            if not checkpoint.can_resume(graph, run_id):
+                print(f"Nothing to resume for run {run_id} (finished or unknown).")
+                return
+            log_event(run_id, "app", "run_resume")
+            graph_input = None  # None continues from the checkpoint instead of starting over
+        else:
+            run_id = str(uuid.uuid4())
+            log_event(run_id, "app", "run_start")
+            graph_input = {"run_id": run_id}
+
+        try:
+            final_state: MainState = graph.invoke(graph_input, run_config(run_id))
+        except Exception as exc:
+            if not is_retryable(exc):
+                raise
+            log_event(run_id, "app", "run_interrupted", reason=type(exc).__name__)
+            print(f"Run interrupted by a transient error: {type(exc).__name__}: {exc}")
+            print(f"Resume with: uv run python app.py --resume {run_id}")
+            return
+    
+    log_event(run_id, "app", "checkpoint_size", bytes=checkpoint.CHECKPOINT_PATH.stat().st_size)
+
+
+    
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(final_state["report_md"], encoding="utf-8")
     markdown_to_pdf(

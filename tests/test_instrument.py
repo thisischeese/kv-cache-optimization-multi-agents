@@ -20,7 +20,7 @@ graph_module = sys.modules["kv_eval.graph"]
 
 ALL_NODES = {
     "setup", "tech_research:kivi", "tech_research:infinigen",
-    "orchestrator", "evidence_check", "synthesis", "report", "coverage", "review",
+    "orchestrator", "evidence_check", "synthesis", "report", "coverage", "neutrality", "review",
 }
 
 
@@ -136,6 +136,7 @@ def test_run_config_joins_run_id_to_trace_and_sets_recursion_limit() -> None:
     assert config["run_id"] == uuid.UUID(run_id)        # LangSmith root run id
     assert config["metadata"] == {"run_id": run_id}     # searchable in LangSmith
     assert config["recursion_limit"] == GRAPH_RECURSION_LIMIT
+    assert config["configurable"] == {"thread_id": run_id}  # checkpoint thread
 
 
 @pytest.mark.parametrize("bad", ["", "..", "a/b", "../x"])
@@ -162,7 +163,7 @@ def test_graph_fills_status_for_every_node_and_logs_each_run(runs_dir) -> None:
     assert all(e["run_id"] == "run-ok" for e in events)  # Send payload carried it too
     # Gate decisions are logged by the nodes themselves, next to the wrapper events.
     decisions = {(e["node"], e["decision"]) for e in events if "duration_ms" not in e}
-    assert {("coverage", "pass"), ("review", "done")} <= decisions
+    assert {("coverage", "pass"), ("neutrality", "pass"), ("review", "done")} <= decisions
 
 
 def test_failing_agent_is_recorded_and_the_report_still_completes(monkeypatch, runs_dir) -> None:

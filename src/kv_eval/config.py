@@ -76,13 +76,41 @@ SUMMARY_MAX_CHARS = 800  # 약 A4 반 쪽
 TRL_ESTIMATE_PHRASE = "공개 정보 기반 추정"
 # 우열·추천 표현. "추천하지 않"처럼 부정문 안에 있으면 허용한다.
 BANNED_EXPRESSIONS: tuple[str, ...] = ("우수", "열등", "승자", "더 낫", "추천")
-ALLOWED_NEGATIONS: tuple[str, ...] = ("추천하지 않", "추천을 하지 않", "우열을 가리지 않")
+# 금지어가 들어 있어도 허용하는 구절. 부정문과 금지어가 우열과 무관하게 쓰인 명사구다.
+ALLOWED_NEGATIONS: tuple[str, ...] = (
+    "추천하지 않", "추천을 하지 않", "추천하지도", "추천을 위한 것이 아니", "추천 시스템",
+    "우열을 가리지 않", "우열을 판정하지 않", "우수성을 판정하지 않",
+)
 MAX_REPORT_REVISIONS = 1
 
 # --- report quality evaluation (요구사항 D) ---
-# TODO[3-승민] NEUTRALITY_PATTERNS: 비교·권고 구문 정규식 목록
-#   NEUTRALITY_MENTION_RATIO: 기술별 언급 비율 허용 범위(예: (0.35, 0.65))
-#   BANNED_EXPRESSIONS / ALLOWED_NEGATIONS는 위에 있다. neutrality 노드가 이어받는다.
+# 중립성(nodes/neutrality.py). BANNED_EXPRESSIONS와 ALLOWED_NEGATIONS도 이 노드가 쓴다.
+# 평가어로 우열을 매기는 구문. 측정값 비교("메모리를 2.6배 줄였다")는 사실이라 넣지 않는다.
+# "보다"는 앞 글자에 붙은 비교격만 본다("보다 효과적으로 줄이는"의 부사 "보다"는 제외).
+NEUTRALITY_PATTERNS: tuple[tuple[str, str], ...] = (
+    ("우열 비교", r"(?<=\S)보다\s*(?:더\s*|훨씬\s*)?(?:낫|뛰어나|좋|바람직|효과적|효율적|실용적|우월|앞서|적합)"),
+    ("우열 비교", r"에 비해\s*(?:더\s*|훨씬\s*)?(?:성능이\s*)?(?:낫|뛰어나|좋|우월)"),
+    ("우열 단정", r"(?:가장|더)\s+(?:뛰어나|바람직|효과적|효율적|실용적|우월|적합)"),
+    ("우열 단정", r"우위|열위|우월|능가|탁월|앞선다|앞서 있|뒤처진다|뒤처져 있"),
+    ("영문 우열 표현", r"(?<![A-Za-z])(?:outperform\w*|superior|better than|the better|preferable)(?![A-Za-z])"),
+)
+# 권고 구문. 기술 이름이 문장에 있을 때만 본다. "PCIe 대역폭을 사용해야 한다" 같은 서술은 권고가 아니다.
+NEUTRALITY_RECOMMEND_PATTERNS: tuple[tuple[str, str], ...] = (
+    ("권고", r"(?:권장|권고)(?:한다|합니다|된다|됩니다|함|됨)|권한다|바람직하"),
+    ("권고", r"(?:선택|도입|채택|사용)해야\s*(?:한다|합니다|함)"),
+    ("영문 권고", r"(?<![A-Za-z])recommend\w*(?![A-Za-z])"),
+)
+# 조건에 따라 달라지는 표현. 기술 이름이 있고, 조건을 밝히지 않았을 때만 위반으로 본다.
+NEUTRALITY_CONDITIONAL_PATTERNS: tuple[tuple[str, str], ...] = (
+    ("조건 없는 유불리 단정", r"(?:유리|불리)(?:하다|합니다|함|하며|한 기술|한 선택)"),
+)
+NEUTRALITY_CONDITION = r"조건(?:에서|하에서|이라면|일 때)|(?:인|일|한|는) 경우(?:에는|에|라면)|(?:일|할) 때|환경에서는|워크로드에서는"
+NEUTRALITY_UNCONDITIONAL = r"무관하게|어떤 경우에도|모든 경우|언제나|항상"
+# 출처가 한 말을 옮긴 문장. 보고서의 판단이 아니므로 규칙 위반으로 보지 않는다(Judge는 본다).
+NEUTRALITY_ATTRIBUTION = r"저자|보고했|보고한다|보고된|에 따르면|주장했|주장한다|평가했"
+NEUTRALITY_MENTION_RATIO: tuple[float, float] = (0.35, 0.65)   # 첫 기술의 언급 비율 허용 범위
+NEUTRALITY_MIN_MENTIONS = 10       # 언급이 이보다 적으면 비율을 보지 않는다
+NEUTRALITY_JUDGE_MAX_CHARS = 30_000
 # TODO[4-선우] MAX_SINGLE_SOURCE_SHARE (예: 0.5), MIN_DISTINCT_SOURCES_PER_TECH (예: 2),
 #   MIN_SOURCE_TYPES_PER_TECH (예: 2). 임계값을 바꾸면 BIAS_MEASURES 문구도 함께 맞춘다.
 # 관점 커버리지: 관점 절마다 있어야 하는 본문 인용 수(nodes/coverage.py)

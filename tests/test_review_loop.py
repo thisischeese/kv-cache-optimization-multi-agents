@@ -43,12 +43,8 @@ def test_each_rule_is_reported() -> None:
     assert "REFERENCE가 마지막 장이 아님" in issues
     assert "TRL 절에 '공개 정보 기반 추정' 문구 없음" in issues
     assert "인용 ID 없음: ghost" in issues
-    assert "금지 표현: 더 낫" in issues
-
-
-def test_negated_recommendation_is_allowed() -> None:
-    ok = _VALID.replace("요약입니다.", "특정 기술을 추천하지 않습니다.")
-    assert find_issues(ok, {}) == []
+    # 금지 표현은 neutrality 노드가 본다(tests/test_neutrality.py).
+    assert not any(i.startswith("금지 표현") for i in issues)
 
 
 def test_summary_length_limit() -> None:
@@ -199,7 +195,7 @@ def test_node_budget_ends_the_loop() -> None:
 
 
 def test_revise_removes_quality_target_sentences() -> None:
-    from kv_eval.agents.report import _revise
+    from kv_eval.agents.report import REMOVED_CELL, _revise
     from kv_eval.schemas import QualityVerdict
 
     verdict = QualityVerdict(criterion="neutrality", passed=False, method="llm",
@@ -207,4 +203,5 @@ def test_revise_removes_quality_target_sentences() -> None:
     body = "- 두 기술은 접근이 다르다. InfiniGen은 복잡하다.\n| 표 | InfiniGen은 복잡하다. |"
     out = _revise(body, {"quality_checks": {"neutrality": verdict}})
     assert "InfiniGen은 복잡하다." not in out.splitlines()[0]
-    assert out.splitlines()[1] == "| 표 | InfiniGen은 복잡하다. |"        # 표는 건드리지 않는다
+    # 표 칸의 우열 문장도 지운다(5장 매트릭스). 칸이 비면 coverage가 빈 칸으로 보지 않게 문구를 넣는다.
+    assert out.splitlines()[1] == f"| 표 | {REMOVED_CELL} |"

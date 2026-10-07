@@ -6,7 +6,8 @@ citations and the REFERENCE list, which is built by code from the ids
 actually cited in the body.
 
 On a revision pass (review found issues) it applies deterministic fixes:
-drops sentences with banned ranking/recommendation words, removes citations
+drops the sentences the quality nodes listed as targets (ranking or
+recommendation wording is found by the neutrality node), removes citations
 that don't resolve, and trims SUMMARY to the length limit.
 
 TODO: an LLM writing pass for SUMMARY once synthesis is real.
@@ -15,8 +16,6 @@ TODO: an LLM writing pass for SUMMARY once synthesis is real.
 import re
 
 from kv_eval.config import (
-    ALLOWED_NEGATIONS,
-    BANNED_EXPRESSIONS,
     SUMMARY_MAX_CHARS,
     TRL_ESTIMATE_PHRASE,
 )
@@ -163,41 +162,48 @@ def _limitations(
     return _bullets(items)
 
 
-def _has_banned(sentence: str) -> bool:
-    cleaned = sentence
-    for ok in ALLOWED_NEGATIONS:
-        cleaned = cleaned.replace(ok, "")
-    return any(word in cleaned for word in BANNED_EXPRESSIONS)
-
-
 # 품질 평가 Loop의 수정 단계. 평가 노드가 QualityVerdict.targets에 넣은 문장 원문을 지운다.
 #   문장 매칭은 원문 그대로 한다(LLM이 바꿔 쓴 문장은 매칭하지 않음).
 #   "근거 부족:" 이슈는 여기서 고칠 수 없다. _limitations가 6장에 기록한다.
-# TODO[3-승민·4-선우] 지우는 대신 중립 문장으로 바꿔야 하는 경우는 자기 criterion 몫을
+#   중립성(neutrality)은 지우기만 한다. 우열 문장을 고쳐 쓰면 새 문장을 다시 검사해야 해서다.
+#   금지어 문장도 neutrality가 targets로 넘긴다. 여기서 따로 금지어를 찾지 않는 것은
+#   neutrality가 일부러 건너뛰는 원문 근거 블록까지 지우지 않기 위해서다.
+#   targets는 인용이 붙은 원문 그대로라, 모르는 인용을 지우기 전에 먼저 적용한다.
+# TODO[4-선우] 지우는 대신 중립 문장으로 바꿔야 하는 경우는 자기 criterion 몫을
 #   _rewrite_target에 추가한다(지금은 지우기만 한다).
 def _quality_targets(state: MainState) -> list[str]:
     return [t for v in (state.get("quality_checks") or {}).values() if not v.passed for t in v.targets if t.strip()]
+
+
+# 표 칸의 문장을 지워 칸이 비면 넣는 문구. "-"나 빈칸은 coverage가 빈 칸으로 본다.
+REMOVED_CELL = "(중립성 검토로 평가 문장 삭제)"
 
 
 def _rewrite_target(line: str, target: str) -> str:
     return line.replace(target, "")
 
 
+def _rewrite_table_row(line: str) -> str:
+    cells = line.strip().strip("|").split("|")
+    return "| " + " | ".join(c.strip() or REMOVED_CELL for c in cells) + " |"
+
+
 def _revise(body: str, state: MainState) -> str:
-    known = known_citation_ids(state) | RESERVED_LABELS
-    body = CITATION.sub(lambda m: m.group(0) if m.group(1) in known else "", body)
     targets = _quality_targets(state)
     lines = []
     for line in body.split("\n"):
-        if line.startswith("#") or line.startswith("|"):
+        if line.startswith("#") or not any(t in line for t in targets):
             lines.append(line)
             continue
         for target in targets:
-            if target in line:
-                line = _rewrite_target(line, target)
-        sentences = re.split(r"(?<=[.。!?다])\s+", line)
-        lines.append(" ".join(s for s in sentences if not _has_banned(s)))
-    return "\n".join(lines)
+            line = _rewrite_target(line, target)
+        if line.startswith("|"):
+            line = _rewrite_table_row(line)
+        elif line.strip() in ("-", "*", ""):
+            continue   # 목록 한 줄이 통째로 지워졌다
+        lines.append(re.sub(r"(?<=\S) {2,}", " ", line).rstrip())   # 지운 자리의 겹친 공백
+    known = known_citation_ids(state) | RESERVED_LABELS
+    return CITATION.sub(lambda m: m.group(0) if m.group(1) in known else "", "\n".join(lines))
 
 
 def report_agent(state: MainState) -> MainState:
