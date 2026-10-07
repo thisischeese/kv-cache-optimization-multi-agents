@@ -65,6 +65,17 @@ MIN_CRITICAL_PER_TECH = 1
 # TRL judges maturity milestones, not opinions, so it has no critical-evidence rule.
 PERSPECTIVES_REQUIRING_CRITICAL: tuple[str, ...] = ("market", "stakeholder", "domain")
 
+# --- bias_control (report quality evaluation, nodes/bias_control.py) ---
+# 기술별로 보고서 본문에 인용된 근거를 본다. 독립 출처·비판 근거 최소 건수는 위
+# MIN_INDEPENDENT_PER_TECH·MIN_CRITICAL_PER_TECH를 같이 쓴다. report.BIAS_MEASURES 문구가
+# 이 값으로 만들어지므로 임계값을 바꾸면 문구도 같이 바뀐다.
+MAX_SINGLE_SOURCE_SHARE = 0.5      # 한 source_id가 차지하는 인용 비율 상한
+MIN_DISTINCT_SOURCES_PER_TECH = 2
+MIN_SOURCE_TYPES_PER_TECH = 2      # source_type이 기록된 근거만 센다
+SELF_REPORT_SOURCE_TYPES: tuple[str, ...] = ("core",)   # 개발 주체의 자체 보고로 보는 출처(원 논문)
+SELF_REPORT_LABEL = "자체 보고"
+BIAS_JUDGE_MAX_CHARS = 12000       # Judge에 보내는 보고서 본문 길이 상한
+
 # --- report / review ---
 SOURCES_PATH = PROJECT_ROOT / "data" / "papers" / "sources.json"
 # 제출 파일명: RAG-Output_{캠퍼스}_{X반}_{참여 인원 이름을 + 로 연결}.pdf
@@ -111,8 +122,7 @@ NEUTRALITY_ATTRIBUTION = r"저자|보고했|보고한다|보고된|에 따르면
 NEUTRALITY_MENTION_RATIO: tuple[float, float] = (0.35, 0.65)   # 첫 기술의 언급 비율 허용 범위
 NEUTRALITY_MIN_MENTIONS = 10       # 언급이 이보다 적으면 비율을 보지 않는다
 NEUTRALITY_JUDGE_MAX_CHARS = 30_000
-# TODO[4-선우] MAX_SINGLE_SOURCE_SHARE (예: 0.5), MIN_DISTINCT_SOURCES_PER_TECH (예: 2),
-#   MIN_SOURCE_TYPES_PER_TECH (예: 2). 임계값을 바꾸면 BIAS_MEASURES 문구도 함께 맞춘다.
+# 편향 통제(nodes/bias_control.py) 기준값은 위 evidence_check 기준 옆에 있다(독립 출처·비판 근거 기준을 같이 쓴다).
 # 관점 커버리지: 관점 절마다 있어야 하는 본문 인용 수(nodes/coverage.py)
 MIN_CITATIONS_PER_PERSPECTIVE = 1
 
@@ -144,6 +154,15 @@ DEFAULT_LLM_MODEL = "gpt-4.1-mini"
 
 def llm_model() -> str:
     return os.getenv("LLM_MODEL", DEFAULT_LLM_MODEL)
+
+
+# Quality evaluation uses a different model version from the generator, so the
+# generator's own bias is not graded by the same model.
+DEFAULT_JUDGE_MODEL = "gpt-4.1"
+
+
+def judge_model() -> str:
+    return os.getenv("JUDGE_MODEL", DEFAULT_JUDGE_MODEL)
 
 
 def llm_enabled() -> bool:

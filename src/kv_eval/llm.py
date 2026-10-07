@@ -6,5 +6,6 @@ from langchain_openai import ChatOpenAI
 from kv_eval.config import llm_model
 
 
-def chat_model(temperature: float = 0.0) -> ChatOpenAI:
-    return ChatOpenAI(model=llm_model(), temperature=temperature)
+def chat_model(temperature: float = 0.0, model: str | None = None) -> ChatOpenAI:
+    """`model` overrides the generator model, e.g. config.judge_model() for evaluation."""
+    return ChatOpenAI(model=model or llm_model(), temperature=temperature)
