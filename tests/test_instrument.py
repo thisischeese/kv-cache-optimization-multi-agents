@@ -20,8 +20,7 @@ graph_module = sys.modules["kv_eval.graph"]
 
 ALL_NODES = {
     "setup", "tech_research:kivi", "tech_research:infinigen",
-    "trl", "market", "stakeholder", "domain",
-    "evidence_check", "synthesis", "report", "review",
+    "orchestrator", "evidence_check", "synthesis", "report", "review",
 }
 
 
@@ -154,11 +153,12 @@ def test_graph_fills_status_for_every_node_and_logs_each_run(runs_dir) -> None:
     assert set(final["node_status"]) == ALL_NODES
     assert set(final["node_status"].values()) == {"ok"}
     assert all(error is None for error in final["errors"].values())
-    assert final["node_runs"] == len(ALL_NODES)  # every node once on the clean path
+    assert set(final["task_status"]) == {"trl", "market", "stakeholder", "domain"}
 
     events = _events(runs_dir, "run-ok")
-    assert len(events) == len(ALL_NODES)
-    assert {e["node"] for e in events} == ALL_NODES
+    outcomes = [e for e in events if e["decision"] in ("ok", "mock", "degraded", "failed")]
+    assert final["node_runs"] == len(outcomes)
+    assert {e["node"] for e in events} == ALL_NODES | set(final["task_status"])
     assert all(e["run_id"] == "run-ok" for e in events)  # Send payload carried it too
 
 
@@ -169,12 +169,13 @@ def test_failing_agent_is_recorded_and_the_report_still_completes(monkeypatch, r
     monkeypatch.setattr(graph_module, "market_agent", broken_market)
     final = graph_module.build_graph().invoke({"run_id": "run-fail"})
 
-    assert final["node_status"]["market"] == "failed"
-    assert final["errors"]["market"].type == "ValueError"
+    assert final["task_status"]["market"] == "failed"
+    assert final["task_errors"]["market"].type == "ValueError"
     assert "market_eval" not in final
     # The gate sees the missing result, spends its one recheck, and moves on.
     assert not final["evidence_check"]["market"].passed
-    assert final["recheck_count"]["market"] == 1
+    assert final["plan"].round == 2
+    assert final["plan"].tasks[0].attempt == 2
     assert final["report_md"]
 
     failed = [e for e in _events(runs_dir, "run-fail") if e["decision"] == "failed"]
@@ -199,5 +200,5 @@ def test_transient_error_is_retried_by_the_node_retry_policy(monkeypatch) -> Non
     final = graph_module.build_graph().invoke({})
 
     assert calls["n"] == 2
-    assert final["node_status"]["market"] == "ok"
-    assert final["errors"]["market"] is None
+    assert final["task_status"]["market"] == "ok"
+    assert final["task_errors"]["market"] is None

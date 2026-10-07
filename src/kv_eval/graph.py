@@ -1,4 +1,6 @@
-"""StateGraph wiring. This module is the only place that owns orchestration."""
+"""계획에 따른 작업 배분과 노드 연결을 구성한다."""
+
+from functools import partial
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -13,28 +15,22 @@ from kv_eval.agents.tech_research import tech_research_target_node
 from kv_eval.agents.trl import trl_agent
 from kv_eval.instrument import instrumented, is_retryable
 from kv_eval.nodes.evidence_check import evidence_check_node, route_after_evidence_check
+from kv_eval.nodes.orchestrator import orchestrator_node
 from kv_eval.nodes.review import route_after_review, review_node
 from kv_eval.nodes.setup import setup_node
-from kv_eval.state import MainState, TechResearchInput
+from kv_eval.nodes.worker import worker_node
+from kv_eval.state import MainState, TechResearchInput, WorkerInput
 
-PERSPECTIVE_NODES: list[str] = ["trl", "market", "stakeholder", "domain"]
-
-# Nodes that call an LLM, retrieval or web search. Transient errors are retried
-# by RETRY_POLICY; other failures are recorded as "failed" and the run goes on
-# (evidence_check sees the missing result). Rule nodes are not in this set:
-# their failures are bugs and stop the run.
-# TODO[1-우진] 전환 후 "worker"를 추가한다. LLM으로 계획을 세우면 "orchestrator"도 추가한다.
-# TODO[3-승민·4-선우·5-진호] LLM Judge를 쓰는 품질 평가 노드도 여기에 추가한다.
+# 외부 호출의 일시 오류는 RetryPolicy가 재시도한다. 소진 시에는 예외가 전파된다.
+# 그 외 외부 노드 실패는 래퍼가 기록하고, 규칙 노드의 오류는 그대로 전파한다.
+# TODO[3-승민/4-선우/5-진호] LLM Judge를 쓰는 품질 평가 노드도 여기에 추가한다.
 #   Judge가 실패해도 보고서 생성이 멈추면 안 된다(fail_soft).
-EXTERNAL_NODES: frozenset[str] = frozenset({"tech_research", *PERSPECTIVE_NODES, "synthesis"})
+EXTERNAL_NODES: frozenset[str] = frozenset({"tech_research", "orchestrator", "worker", "synthesis"})
 RETRY_POLICY = RetryPolicy(max_attempts=3, retry_on=is_retryable)
 
 
 def fan_out_tech_research(state: MainState) -> list[Send]:
-    """One tech_research run per target, in parallel. Each run receives a
-    TechResearchInput ({"target", "domain"}, plus "run_id" when the run has
-    one) and returns {"tech_profiles":
-    {tech_id: profile}}; merge_tech_profiles combines the two writes."""
+    """계획에 앞서 기술별 프로필을 조사하고 tech_profiles에 합친다."""
     sends = []
     for tech in state["targets"]:
         payload = TechResearchInput(target=tech, domain=state["domain"])
@@ -44,15 +40,23 @@ def fan_out_tech_research(state: MainState) -> list[Send]:
     return sends
 
 
-# TODO[1-우진] dispatch_tasks(state: MainState) -> list[Send]
-#   - state["plan"].tasks마다 Send("worker", WorkerInput(task=..., targets=..., domain=...))를 만든다.
-#     targets는 task.tech_ids로 거른다. run_id는 위 fan_out_tech_research처럼 있을 때만 넣는다.
-#   - tasks가 비어 있으면 ["synthesis"]를 반환한다(상한 소진 또는 재계획할 작업 없음).
-#   - 요구사항 B: Workers는 계획 수립 뒤에 결정된다. 이 함수가 그 동적 Fan-out이다.
+def dispatch_tasks(state: MainState) -> list[Send] | list[str]:
+    """저장된 계획을 작업별 입력으로 펼치고 빈 계획이면 종합 단계로 보낸다."""
+    if not state["plan"].tasks:
+        return ["synthesis"]
+    return [
+        Send("worker", WorkerInput(
+            run_id=state.get("run_id", ""),
+            task=task,
+            targets=[tech for tech in state["targets"] if tech.tech_id in task.tech_ids],
+            domain=state["domain"],
+        ))
+        for task in state["plan"].tasks
+    ]
 
 
 def _add_node(builder: StateGraph, name: str, fn) -> None:
-    """Every node goes through `instrumented` (status, errors, node_runs, log)."""
+    """모든 노드를 상태와 오류, 실행 횟수를 기록하는 래퍼로 감싼다."""
     external = name in EXTERNAL_NODES
     builder.add_node(
         name,
@@ -68,10 +72,9 @@ def build_graph() -> CompiledStateGraph:
 
     _add_node(builder, "setup", setup_node)
     _add_node(builder, "tech_research", tech_research_target_node)
-    _add_node(builder, "trl", trl_agent)
-    _add_node(builder, "market", market_agent)
-    _add_node(builder, "stakeholder", stakeholder_agent)
-    _add_node(builder, "domain", domain_agent)
+    _add_node(builder, "orchestrator", orchestrator_node)
+    agents = {"trl": trl_agent, "market": market_agent, "stakeholder": stakeholder_agent, "domain": domain_agent}
+    _add_node(builder, "worker", partial(worker_node, agents=agents))
     _add_node(builder, "evidence_check", evidence_check_node)
     _add_node(builder, "synthesis", synthesis_agent)
     _add_node(builder, "report", report_agent)
@@ -80,36 +83,18 @@ def build_graph() -> CompiledStateGraph:
     builder.add_edge(START, "setup")
     builder.add_conditional_edges("setup", fan_out_tech_research, ["tech_research"])
 
-    # TODO[1-우진] 고정 fan-out을 orchestrator-worker로 바꾼다(요구사항 B: 고정 Fan-out 금지).
-    #   - 아래 두 for 루프(tech_research -> 관점 4개, 관점 4개 -> evidence_check)와
-    #     관점 노드 4개의 _add_node를 지운다.
-    #   - 새 흐름:
-    #       tech_research -> orchestrator      (두 Send 분기가 같은 superstep에 끝나므로 orchestrator는 1번 실행)
-    #       orchestrator  => dispatch_tasks    (Send("worker") x N)
-    #       worker        -> evidence_check
-    #       evidence_check => route_after_evidence_check -> "orchestrator" | "synthesis"
-    #   - _add_node(builder, "orchestrator", orchestrator_node), _add_node(builder, "worker", worker_node)
-    #   - tech_research는 계획의 선행 조건이라 기술별 Send를 그대로 둔다.
-    for node in PERSPECTIVE_NODES:
-        builder.add_edge("tech_research", node)
-
-    # One edge per perspective instead of a single join over all four: a join
-    # only fires when *all* listed nodes ran in the same step, so it would
-    # never fire again after a partial recheck. On the first pass the four run
-    # in the same superstep anyway, so evidence_check still runs once.
-    for node in PERSPECTIVE_NODES:
-        builder.add_edge(node, "evidence_check")
-
-    # Bounded recheck: evidence_check -> failing perspectives only (max 1 each),
-    # otherwise -> synthesis.
+    # 같은 라운드의 Send 작업들이 끝난 뒤 점검 노드가 한 번 실행된다.
+    builder.add_edge("tech_research", "orchestrator")
+    builder.add_conditional_edges("orchestrator", dispatch_tasks, ["worker", "synthesis"])
+    builder.add_edge("worker", "evidence_check")
     builder.add_conditional_edges(
         "evidence_check",
         route_after_evidence_check,
-        [*PERSPECTIVE_NODES, "synthesis"],
+        ["orchestrator", "synthesis"],
     )
     builder.add_edge("synthesis", "report")
 
-    # TODO[3-승민·4-선우·5-진호] 보고서 품질 평가 노드를 report와 review 사이에 넣는다(요구사항 D).
+    # TODO[3-승민/4-선우/5-진호] 보고서 품질 평가 노드를 report와 review 사이에 넣는다(요구사항 D).
     #   - report -> neutrality / bias_control / coverage (병렬) -> review(게이트)
     #     평가 기준이 고정된 병렬 평가라 정적 edge로 둔다. 고정 Fan-out 금지는 Worker에만 해당한다.
     #   - 위 evidence_check처럼 평가 노드마다 review로 가는 edge를 따로 둔다.
@@ -118,8 +103,7 @@ def build_graph() -> CompiledStateGraph:
     #   - 노드 추가는 각 담당이 하고, 아래 edge와 route 변경은 5번 진호가 맡는다(review.py TODO).
     builder.add_edge("report", "review")
 
-    # Bounded revision loop: review -> report at most MAX_REPORT_REVISIONS
-    # times (route_after_review), then review -> END either way.
+    # 보고서 수정은 기존 상한 안에서 진행하며 품질 평가 구현은 해당 담당자가 연결한다.
     # TODO[5-진호] 오케스트레이터 전환 뒤 근거 부족 이슈용 분기를 추가한다:
     #   {"retry": "report", "replan": "orchestrator", "done": END}
     builder.add_conditional_edges(

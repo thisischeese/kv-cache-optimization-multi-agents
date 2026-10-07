@@ -1,50 +1,21 @@
-"""Rule gate over the four perspective results, plus the bounded recheck.
-
-Per perspective and per tech it checks:
-- evidence count >= MIN_EVIDENCE_PER_TECH
-- independent sources >= MIN_INDEPENDENT_PER_TECH
-- critical evidence >= MIN_CRITICAL_PER_TECH (market / stakeholder / domain)
-- TRL only: at least one tech-unit (scope_level="tech") evidence
-- every citation "[id]" / "[id p.N]" in the text refers to collected evidence
-
-A perspective whose evidence carries none of the new metadata (tech_id,
-stance, independent, scope_level) is still on mock data: it passes with a
-"미평가" note instead of failing, so the mock pipeline keeps running.
-
-Failing perspectives with budget left go into `recheck_targets`; only those
-nodes re-run, at most MAX_RECHECK_PER_PERSPECTIVE times each.
-"""
+"""기존 근거 기준으로 현재 작업을 점검하고 재계획 또는 종합 단계로 보낸다."""
 
 from kv_eval.config import (
-    MAX_RECHECK_PER_PERSPECTIVE,
+    MAX_NODE_RUNS,
+    MAX_PLAN_ROUNDS,
+    MAX_TASK_ATTEMPTS,
     MIN_CRITICAL_PER_TECH,
     MIN_EVIDENCE_PER_TECH,
     MIN_INDEPENDENT_PER_TECH,
-    PERSPECTIVES,
     PERSPECTIVES_REQUIRING_CRITICAL,
     TECH_IDS,
 )
+from kv_eval.observability import log_event
 from kv_eval.references import cited_ids
+from kv_eval.results import get_result
 from kv_eval.schemas import CheckResult, Evidence, PerspectiveResult, TRLResult
 from kv_eval.state import MainState
 
-# TODO[1-우진] 오케스트레이터 전환에 맞춰 evidence_check를 "판정만 하는" 게이트로 바꾼다.
-#   - 판정 대상: state["plan"].tasks의 task_id마다 state["results"][task_id]. 키는 task_id로 쓴다.
-#     아래 STATE_KEY_BY_PERSPECTIVE 매핑은 지운다.
-#   - task_status[task_id] == "failed"이면 missing=["실행 실패: <task_errors[task_id].type>"]로 둔다
-#     (재계획 대상). "mock"이면 "미평가"로 통과시킨다. _is_annotated 추측은 status가 없을 때만 쓴다.
-#   - 재조사를 고르는 일(recheck_targets, recheck_count)은 orchestrator가 맡는다. 이 노드에서는 지운다.
-#   - route_after_evidence_check
-#       재계획할 작업이 있고 plan.round < MAX_PLAN_ROUNDS이고 node_runs < MAX_NODE_RUNS -> "orchestrator"
-#       그 밖의 경우 -> "synthesis"
-#     결정마다 log_event(state.get("run_id"), "evidence_check", <orchestrator|synthesis>,
-#       reason=<task_id별 missing 요약>)을 남긴다.
-STATE_KEY_BY_PERSPECTIVE: dict[str, str] = {
-    "trl": "trl_eval",
-    "market": "market_eval",
-    "stakeholder": "stakeholder_eval",
-    "domain": "domain_eval",
-}
 
 def _is_annotated(evidence: list[Evidence]) -> bool:
     return any(
@@ -97,25 +68,39 @@ def check_perspective(
 
 
 def evidence_check_node(state: MainState) -> MainState:
-    counts = dict(state.get("recheck_count") or {p: 0 for p in PERSPECTIVES})
-    results: dict[str, CheckResult] = {}
-    recheck: list[str] = []
+    """현재 라운드만 점검하되 이전 작업의 판정과 부족 사유를 보존한다."""
+    checks = dict(state.get("evidence_check", {}))
+    for task in state["plan"].tasks:
+        status = state.get("task_status", {}).get(task.task_id)
+        if status == "failed":
+            error = state.get("task_errors", {}).get(task.task_id)
+            detail = error.type if error is not None else "오류 정보 없음"
+            check = CheckResult(passed=False, missing=[f"실행 실패: {detail}"])
+        elif status == "mock":
+            check = CheckResult(passed=True, notes=["미평가: mock 결과"])
+        else:
+            check = check_perspective(task.kind, get_result(state, task.task_id))
+        checks[task.task_id] = check
+    return {"evidence_check": checks}
 
-    for perspective in PERSPECTIVES:
-        check = check_perspective(
-            perspective, state.get(STATE_KEY_BY_PERSPECTIVE[perspective])
+
+def route_after_evidence_check(state: MainState) -> str:
+    """실행 예산이 남은 미달 작업이 있을 때만 오케스트레이터로 돌아간다."""
+    plan = state["plan"]
+    checks = state.get("evidence_check", {})
+    retry = [
+        task.task_id for task in plan.tasks
+        if task.attempt < MAX_TASK_ATTEMPTS and (
+            state.get("task_status", {}).get(task.task_id) == "failed"
+            or (task.task_id in checks and not checks[task.task_id].passed)
         )
-        results[perspective] = check
-        if not check.passed and counts.get(perspective, 0) < MAX_RECHECK_PER_PERSPECTIVE:
-            recheck.append(perspective)
-            counts[perspective] = counts.get(perspective, 0) + 1
-
-    return {"evidence_check": results, "recheck_count": counts, "recheck_targets": recheck}
-
-
-def route_after_evidence_check(state: MainState) -> list[str]:
-    """Re-run only the failing perspective nodes, otherwise go to synthesis.
-
-    Node names equal perspective names ("trl", "market", ...).
-    """
-    return list(state.get("recheck_targets") or []) or ["synthesis"]
+    ]
+    route = "orchestrator" if (
+        retry and plan.round < MAX_PLAN_ROUNDS and state.get("node_runs", 0) < MAX_NODE_RUNS
+    ) else "synthesis"
+    log_event(
+        state.get("run_id"), "evidence_check", route,
+        reason="재계획 가능한 미달 작업이 있다." if route == "orchestrator" else "종합 단계로 진행한다.",
+        tasks=retry,
+    )
+    return route
