@@ -10,9 +10,10 @@ from pydantic import BaseModel
 
 from kv_eval.config import (
     MAX_NODE_RUNS, MAX_PLAN_ROUNDS, MAX_TASK_ATTEMPTS,
-    MAX_TASKS_PER_ROUND, PERSPECTIVES, llm_enabled,
+    MAX_TASKS_PER_ROUND, PERSPECTIVE_LABELS, PERSPECTIVES, llm_enabled,
 )
 from kv_eval.llm import chat_model
+from kv_eval.nodes.review import rework_perspectives
 from kv_eval.observability import log_event
 from kv_eval.schemas import Plan, Task, WorkerKind
 from kv_eval.state import MainState
@@ -91,6 +92,43 @@ def _generate_llm_plan(state: MainState, rule_plan: Plan) -> tuple[Plan, str]:
     return Plan(round=rule_plan.round, source="llm", tasks=tasks), proposal.rationale
 
 
+def _quality_rework_tasks(
+    state: MainState, previous: Plan, planned: list[Task], excluded: list[str],
+) -> list[Task]:
+    """review 게이트가 replan으로 보낸 경우: 품질 평가가 지목한 관점의 작업을 만든다.
+
+    보고서가 있을 때만 본다(보고서 전 재계획은 evidence_check 몫). 라운드 상한은
+    evidence_check 재계획과 같이 쓰고, 시도 상한은 작업별로 지킨다. 이미 계획에 든
+    관점은 보완 지시만 더한다. 직전 라운드에 없던 관점은 1라운드 1회 실행으로 본다.
+    """
+    if not state.get("report_md"):
+        return []
+    issues = [
+        issue
+        for verdict in (state.get("quality_checks") or {}).values()
+        if not verdict.passed
+        for issue in verdict.issues
+    ]
+    by_id = {task.task_id: task for task in planned}
+    last = {task.task_id: task for task in previous.tasks}
+    tech_ids = [tech.tech_id for tech in state.get("targets", [])]
+    added: list[Task] = []
+    for kind in rework_perspectives(state):
+        if kind not in PERSPECTIVES:
+            continue
+        focus = [issue for issue in issues if PERSPECTIVE_LABELS[kind] in issue]
+        if kind in by_id:
+            task = by_id[kind]
+            task.focus = list(dict.fromkeys([*task.focus, *focus]))
+            continue
+        attempt = last[kind].attempt + 1 if kind in last else 2
+        if attempt > MAX_TASK_ATTEMPTS:
+            excluded.append(kind)
+            continue
+        added.append(Task(task_id=kind, kind=kind, tech_ids=tech_ids, attempt=attempt, focus=focus))
+    return added
+
+
 def orchestrator_node(state: MainState) -> MainState:
     """처음에는 모든 관점을 계획하고 이후에는 실패하거나 근거가 부족한 작업만 계획한다."""
     previous = state.get("plan")
@@ -128,7 +166,11 @@ def orchestrator_node(state: MainState) -> MainState:
                 "attempt": task.attempt + 1,
                 "focus": list(check.missing) if check is not None else [],
             }))
-        if tasks:
+        quality_tasks = _quality_rework_tasks(state, previous, tasks, excluded)
+        tasks += quality_tasks
+        if quality_tasks:
+            reason = "보고서 품질 평가가 근거 보완을 요청한 관점을 재계획한다."
+        elif tasks:
             reason = "실패하거나 근거 점검을 통과하지 못한 작업만 재계획한다."
         elif excluded:
             decision = "budget_exhausted"

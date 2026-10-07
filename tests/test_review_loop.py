@@ -156,3 +156,55 @@ def test_tech_research_prompt_generates_korean_report_sentences() -> None:
     assert "points in Korean" in EXTRACT_SYSTEM
     assert "citation labels are added by code" in EXTRACT_SYSTEM
     assert "Points may be written in Korean" in VERIFY_SYSTEM
+
+
+def _gated(report_md: str, verdict, **extra) -> dict:
+    from kv_eval.nodes.review import route_after_review
+
+    state = {"report_md": report_md, "report_revision": 0, "quality_checks": {verdict.criterion: verdict}, **extra}
+    update = review_node(state)
+    return {**update, "route": route_after_review({**state, **update})}
+
+
+def _gap(text: str):
+    from kv_eval.schemas import EVIDENCE_GAP_PREFIX, QualityVerdict
+
+    return QualityVerdict(criterion="coverage", passed=False, method="rule", issues=[f"{EVIDENCE_GAP_PREFIX} {text}"])
+
+
+def test_gate_merges_quality_issues_into_report_issues() -> None:
+    out = _gated(_VALID, _gap("시장성 절이 비어 있음"))
+    assert out["report_issues"] == ["근거 부족: 시장성 절이 비어 있음"]
+
+
+def test_evidence_gap_is_retried_once_to_be_recorded_then_done() -> None:
+    assert _gated(_VALID, _gap("시장성 절이 비어 있음"))["route"] == "retry"     # 6장에 아직 없음
+
+    recorded = _VALID.replace("# REFERENCE", "# 6. 한계점\n\n- 근거 부족: 시장성 절이 비어 있음\n\n# REFERENCE")
+    assert _gated(recorded, _gap("시장성 절이 비어 있음"))["route"] == "done"     # 재작성으로 더 할 일 없음
+
+
+def test_rewritable_quality_issue_is_retried() -> None:
+    from kv_eval.schemas import QualityVerdict
+
+    verdict = QualityVerdict(criterion="neutrality", passed=False, method="rule",
+                             issues=["우열 판정 1건"], targets=["KIVI가 낫다."])
+    assert _gated(_VALID, verdict)["route"] == "retry"
+
+
+def test_node_budget_ends_the_loop() -> None:
+    from kv_eval.config import MAX_NODE_RUNS
+
+    assert _gated(_VALID, _gap("x"), node_runs=MAX_NODE_RUNS)["route"] == "done"
+
+
+def test_revise_removes_quality_target_sentences() -> None:
+    from kv_eval.agents.report import _revise
+    from kv_eval.schemas import QualityVerdict
+
+    verdict = QualityVerdict(criterion="neutrality", passed=False, method="llm",
+                             issues=["암묵적 우열"], targets=["InfiniGen은 복잡하다."])
+    body = "- 두 기술은 접근이 다르다. InfiniGen은 복잡하다.\n| 표 | InfiniGen은 복잡하다. |"
+    out = _revise(body, {"quality_checks": {"neutrality": verdict}})
+    assert "InfiniGen은 복잡하다." not in out.splitlines()[0]
+    assert out.splitlines()[1] == "| 표 | InfiniGen은 복잡하다. |"        # 표는 건드리지 않는다
