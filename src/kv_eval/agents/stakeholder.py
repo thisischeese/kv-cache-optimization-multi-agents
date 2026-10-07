@@ -715,7 +715,7 @@ def _recheck_missing(state: MainState) -> list[str]:
     return list(getattr(check, "missing", None) or [])
 
 
-def stakeholder_agent(state: MainState) -> MainState:
+def stakeholder_agent(state: MainState) -> dict[str, StakeholderEvaluation]:
     """LangGraph node. Offline (no key or KV_EVAL_OFFLINE=1) it returns [MOCK] data."""
 
     if not _llm_enabled():

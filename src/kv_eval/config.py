@@ -64,7 +64,6 @@ MIN_INDEPENDENT_PER_TECH = 1
 MIN_CRITICAL_PER_TECH = 1
 # TRL judges maturity milestones, not opinions, so it has no critical-evidence rule.
 PERSPECTIVES_REQUIRING_CRITICAL: tuple[str, ...] = ("market", "stakeholder", "domain")
-MAX_RECHECK_PER_PERSPECTIVE = 1
 
 # --- report / review ---
 SOURCES_PATH = PROJECT_ROOT / "data" / "papers" / "sources.json"
@@ -92,10 +91,10 @@ MAX_REPORT_REVISIONS = 1
 MAX_PLAN_ROUNDS = 2        # round 1 + one re-plan (same budget as the old recheck)
 MAX_TASK_ATTEMPTS = 2
 MAX_TASKS_PER_ROUND = 8    # caps an LLM plan that inflates the task list
-# Normal path runs at most 18 nodes; past this, routers force the run to finish.
-# TODO[1-우진·5-진호] orchestrator/worker와 품질 평가 노드를 추가하면 최대 실행 수를 다시 계산하고
-#   이 상한을 조정한다(평가 노드 3개 x 보고서 라운드 수 + 재계획 라운드).
+# 품질 평가 경로를 통합하기 전까지 유지하는 임시 안전 상한이다.
 MAX_NODE_RUNS = 30
+# TODO[1-우진/5-진호] 품질 노드와 review 경로를 통합한 뒤
+#   평가 노드 실행 수와 재계획/보고서 라운드를 포함해 상한을 다시 계산한다.
 GRAPH_RECURSION_LIMIT = 40  # last-resort guard passed in the invoke config
 
 # --- PDF ---

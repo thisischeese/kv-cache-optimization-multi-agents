@@ -8,7 +8,4 @@ def get_result(state: MainState, task_id: str) -> PerspectiveResult | TRLResult 
     """성공 결과는 유지하고 재시도가 실패한 작업의 이전 결과는 사용하지 않는다."""
     if state.get("task_status", {}).get(task_id) == "failed":
         return None
-    if "results" in state:
-        return state["results"].get(task_id)
-    # 기존 호출자와 테스트가 구 계약만 전달하는 동안 읽기 호환을 유지한다.
-    return state.get(f"{task_id}_eval")
+    return state.get("results", {}).get(task_id)

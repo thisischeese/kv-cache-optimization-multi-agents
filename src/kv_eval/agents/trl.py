@@ -687,7 +687,7 @@ def _evaluate(
     ), [used[key] for key in sorted(used)]
 
 
-def trl_agent(state: MainState) -> MainState:
+def trl_agent(state: MainState) -> dict[str, TRLResult]:
     """RAG 및 공식 웹 원문을 평가하고 내부 met 검증 후 기존 출력 계약을 반환한다."""
     if not llm_enabled():
         if os.getenv("KV_EVAL_OFFLINE") != "1":

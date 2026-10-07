@@ -1,13 +1,13 @@
 """계획의 작업 하나를 기존 관점 Agent에 전달하고 결과 키를 변환한다."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 from kv_eval.schemas import CheckResult, PerspectiveResult, TRLResult
 from kv_eval.state import MainState, WorkerInput
 
 
 def worker_node(
-    payload: WorkerInput, *, agents: dict[str, Callable[[MainState], MainState]],
+    payload: WorkerInput, *, agents: dict[str, Callable[[MainState], Mapping[str, object]]],
 ) -> dict:
     """상태와 오류 기록은 바깥 instrumented 래퍼에 맡긴다."""
     task = payload["task"]

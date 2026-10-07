@@ -171,7 +171,7 @@ def test_failing_agent_is_recorded_and_the_report_still_completes(monkeypatch, r
 
     assert final["task_status"]["market"] == "failed"
     assert final["task_errors"]["market"].type == "ValueError"
-    assert "market_eval" not in final
+    assert "market" not in final.get("results", {})
     # The gate sees the missing result, spends its one recheck, and moves on.
     assert not final["evidence_check"]["market"].passed
     assert final["plan"].round == 2

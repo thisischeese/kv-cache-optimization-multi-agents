@@ -196,7 +196,7 @@ def _web_to_evidence(
     )
 
 
-def market_agent(state: MainState) -> MainState:
+def market_agent(state: MainState) -> dict[str, PerspectiveResult]:
     """공개 웹 자료를 기반으로 시장성 평가 근거를 수집한다."""
 
     evidence: list[Evidence] = []
