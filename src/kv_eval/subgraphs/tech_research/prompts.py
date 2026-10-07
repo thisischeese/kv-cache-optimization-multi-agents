@@ -1,7 +1,8 @@
 """Extraction targets and prompt builders for the tech research subgraph.
 
-Queries and extracted text are in English because the source papers are
-English; translation belongs to the report stage.
+Queries stay in English because the source papers are English. Extracted report
+sentences are Korean, while numbers, units, model names, baseline names and
+citations preserve the source notation.
 """
 
 from dataclasses import dataclass
@@ -181,7 +182,10 @@ EXTRACT_SYSTEM = (
     "number to a specific model, method or metric unless the passage makes that "
     "pairing unambiguous, and prefer numbers stated in sentences. If the passages "
     "do not contain the target information, return an empty list. Write at most 5 "
-    "points in English, one or two sentences each."
+    "points in Korean, one or two sentences each. Keep technique names, model "
+    "names, baseline names, numbers, units, and technical terms such as KV cache "
+    "in their source notation when that is clearer. Do not translate or include "
+    "citation labels in the text; citation labels are added by code."
 )
 
 
@@ -215,7 +219,10 @@ def extract_messages(tech: Tech, spec: ItemSpec, chunks: list[RetrievedChunk]) -
 
 
 VERIFY_SYSTEM = (
-    "You check extracted points against the passages they cite. A point is "
+    "You check extracted points against the passages they cite. Points may be "
+    "written in Korean while the cited passages are in English; judge support by "
+    "meaning, while still checking numbers, units, names, and technical terms "
+    "strictly. A point is "
     "supported only if everything it says, including numbers, names, and any "
     "interpretation (for example 'implying', 'does not eliminate'), is stated in "
     "its cited passages. Hedged speculation the passages do not state ('may "

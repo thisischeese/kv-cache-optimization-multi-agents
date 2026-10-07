@@ -56,6 +56,22 @@ def test_summary_length_limit() -> None:
     assert any(i.startswith("SUMMARY가 900자") for i in find_issues(long_report, {}))
 
 
+def test_english_narrative_is_flagged_but_source_evidence_is_allowed() -> None:
+    english_body = _VALID.replace(
+        "요약입니다.",
+        "This report narrative is still written in English and should be flagged.",
+    )
+    assert "보고서 서술 영어 잔존" in find_issues(english_body, {})
+
+    source_evidence = _VALID.replace(
+        "# REFERENCE",
+        "## 4.2 시장성\n\n**원문 근거**\n\n"
+        "- This source evidence may remain in English because it is a verbatim paper claim. [kivi p.1]\n\n"
+        "# REFERENCE",
+    )
+    assert "보고서 서술 영어 잔존" not in find_issues(source_evidence, {})
+
+
 def test_retry_once_then_bounded() -> None:
     broken = {"report_md": "# SUMMARY\n\nno reference\n", "report_revision": 0}
     first = review_node(broken)
@@ -132,3 +148,11 @@ def test_report_renders_optional_profile_and_trl_fields(monkeypatch) -> None:
     assert "| kivi | 5 | 4 | 중간 |" in md
     assert "[kivi] Zirui Liu et al." in md       # profile citation reaches REFERENCE
     assert final["report_issues"] == []
+
+
+def test_tech_research_prompt_generates_korean_report_sentences() -> None:
+    from kv_eval.subgraphs.tech_research.prompts import EXTRACT_SYSTEM, VERIFY_SYSTEM
+
+    assert "points in Korean" in EXTRACT_SYSTEM
+    assert "citation labels are added by code" in EXTRACT_SYSTEM
+    assert "Points may be written in Korean" in VERIFY_SYSTEM
