@@ -1,3 +1,5 @@
+import pytest
+
 from kv_eval.agents import market as market_module
 from kv_eval.agents.market import _mentions_tech_and_kv_cache
 from kv_eval.schemas import Tech
@@ -27,7 +29,7 @@ def test_market_agent_returns_web_based_evidence(monkeypatch) -> None:
     monkeypatch.setattr(
         market_module,
         "_collect_market_evidence",
-        lambda _: [
+        lambda _, **kwargs: [
             (
                 "demand_growth",
                 WebEvidence(
@@ -195,7 +197,7 @@ def test_market_agent_uses_market_prompt_for_llm_assessment(monkeypatch) -> None
     monkeypatch.setattr(
         market_module,
         "_collect_market_evidence",
-        lambda _: [
+        lambda _, **kwargs: [
             (
                 "adoption",
                 WebEvidence(
@@ -227,3 +229,25 @@ def test_market_agent_uses_market_prompt_for_llm_assessment(monkeypatch) -> None
     assert "KIVI adoption report" in captured_prompt
     assert "수요 근거가 확인되었다." in result.tech_results["kivi"]
     assert "생태계 자료 부족" in result.tech_results["kivi"]
+
+
+@pytest.mark.parametrize("with_focus", [False, True])
+def test_focus_reaches_market_search(monkeypatch, with_focus):
+    from kv_eval.schemas import CheckResult
+
+    queries = []
+    monkeypatch.setattr(market_module, "perplexity_api_key", lambda: "test-key")
+    monkeypatch.setattr(market_module, "llm_enabled", lambda: False)
+    monkeypatch.setattr(market_module, "search_web", lambda **kw: queries.append(kw["query"]) or [])
+    state = _state()
+    if with_focus:
+        state["evidence_check"] = {"market": CheckResult(passed=False, missing=[
+            "kivi: 비판 근거 보완", "infinigen: 운영 사례 보완", "최신 자료 확인",
+        ])}
+    result = market_module.market_agent(state)["market_eval"]
+    assert result.perspective == "market" and len(queries) == 4
+    for query in queries:
+        assert "KIVI" in query and "KV cache" in query
+        assert ("비판 근거 보완" in query) is with_focus
+        assert ("최신 자료 확인" in query) is with_focus
+        assert "infinigen" not in query

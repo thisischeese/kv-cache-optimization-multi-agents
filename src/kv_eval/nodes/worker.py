@@ -26,7 +26,3 @@ def worker_node(
     if "_status" in update:
         output["_status"] = update["_status"]
     return output
-
-
-# TODO[1-우진] TRL과 시장성은 아직 evidence_check의 보완 지시를 읽지 않는다.
-#   focus 전달과 실제 검색 반영을 구분한다. Agent 내부 확장은 담당자와 별도로 진행한다.

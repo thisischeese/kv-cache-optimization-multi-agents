@@ -476,3 +476,28 @@ def test_report_claim_shows_short_quote_but_keeps_full_text(papers):
         quote_part = line.split(" 근거: ", 1)[1]
         assert len(quote_part) <= trl._CLAIM_QUOTE_CHARS + 1 and quote_part.endswith("…")
     assert long_quote in core.quote                       # 원문 전체는 그대로 남는다
+
+
+@pytest.mark.parametrize("with_focus", [False, True])
+def test_focus_reaches_rag_web_and_expanded_retry(monkeypatch, with_focus):
+    from kv_eval.schemas import CheckResult
+
+    rag_queries, web_queries = [], []
+    monkeypatch.setattr(trl, "llm_enabled", lambda: True)
+    monkeypatch.setattr(trl, "perplexity_api_key", lambda: "test-key")
+    monkeypatch.setenv("KV_EVAL_OFFLINE", "0")
+    monkeypatch.setattr(trl, "retrieve", lambda **kw: rag_queries.append(kw["query"]) or [])
+    monkeypatch.setattr(trl, "_search_web_with_cache", lambda query, domains: web_queries.append(query) or [])
+    state = {"targets": [Tech(tech_id="kivi", name="KIVI", camp="SW", selection_reason="테스트")]}
+    if with_focus:
+        state["evidence_check"] = {"trl": CheckResult(passed=False, missing=[
+            "kivi: 독립 벤치마크 보완", "infinigen: 운영 사례 보완", "최신 자료 확인",
+        ])}
+    with pytest.raises(trl.TRLEvidenceError):
+        trl.trl_agent(state)
+    assert len(rag_queries) == 24 and len(web_queries) == 20
+    for query in rag_queries + web_queries:
+        assert "KIVI" in query and "KV cache" in query
+        assert ("독립 벤치마크 보완" in query) is with_focus
+        assert ("최신 자료 확인" in query) is with_focus
+        assert "infinigen" not in query
