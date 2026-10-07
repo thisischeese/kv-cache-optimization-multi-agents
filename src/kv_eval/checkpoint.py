@@ -8,7 +8,25 @@
 담당: 2번 승은
 """
 
-# TODO[2-승은] 의존성: pyproject.toml에 langgraph-checkpoint-sqlite를 추가하고 uv sync를 실행한다(현재 미설치).
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
+
+from langgraph.checkpoint.sqlite import SqliteSaver
+
+from kv_eval.config import RUNS_DIR
+
+
+@contextmanager
+def open_checkpointer(path: Path = RUNS_DIR / "checkpoints.sqlite") -> Iterator[SqliteSaver]:
+    """SQLite checkpointer for app runs. One run is one thread (thread_id = run_id),
+    so every run shares this file and is told apart by its run_id."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with SqliteSaver.from_conn_string(str(path)) as saver:
+        yield saver
+
+
+# TODO[2-승은] 의존성: pyproject.toml에 langgraph-checkpoint-sqlite를 추가하고 uv sync를 실행한다(설치완료). ✅
 #
 # TODO[2-승은] open_checkpointer(path: Path = RUNS_DIR / "checkpoints.sqlite")
 #   - SqliteSaver.from_conn_string(str(path))는 컨텍스트 매니저다. app.py에서 with 블록 안에서

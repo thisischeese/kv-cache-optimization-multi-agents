@@ -2,7 +2,7 @@
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.types import RetryPolicy, Send
+from langgraph.types import Checkpointer, RetryPolicy, Send
 
 from kv_eval.agents.domain import domain_agent
 from kv_eval.agents.market import market_agent
@@ -63,7 +63,7 @@ def _add_node(builder: StateGraph, name: str, fn) -> None:
 
 # TODO[2-승은] build_graph(checkpointer: Checkpointer = None)로 인자를 받아 builder.compile(checkpointer=...)에 넘긴다.
 #   모듈 전역 `graph`는 체크포인터 없이 유지한다(기존 테스트 호환). app.py가 체크포인터를 넣어 따로 빌드한다.
-def build_graph() -> CompiledStateGraph:
+def build_graph(checkpointer: Checkpointer = None) -> CompiledStateGraph:
     builder = StateGraph(MainState)
 
     _add_node(builder, "setup", setup_node)
@@ -128,7 +128,7 @@ def build_graph() -> CompiledStateGraph:
         {"retry": "report", "done": END},
     )
 
-    return builder.compile()
+    return builder.compile(checkpointer=checkpointer)
 
 
 graph = build_graph()
