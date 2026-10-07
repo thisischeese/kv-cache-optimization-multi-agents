@@ -77,7 +77,11 @@ def main() -> None:
             print(f"Run interrupted by a transient error: {type(exc).__name__}: {exc}")
             print(f"Resume with: uv run python app.py --resume {run_id}")
             return
-        
+    
+    log_event(run_id, "app", "checkpoint_size", bytes=checkpoint.CHECKPOINT_PATH.stat().st_size)
+
+
+    
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(final_state["report_md"], encoding="utf-8")
     markdown_to_pdf(
