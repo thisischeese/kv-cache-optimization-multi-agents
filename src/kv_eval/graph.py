@@ -16,6 +16,7 @@ from kv_eval.agents.trl import trl_agent
 from kv_eval.instrument import instrumented, is_retryable
 from kv_eval.nodes.coverage import coverage_node
 from kv_eval.nodes.evidence_check import evidence_check_node, route_after_evidence_check
+from kv_eval.nodes.neutrality import neutrality_node
 from kv_eval.nodes.orchestrator import orchestrator_node
 from kv_eval.nodes.review import route_after_review, review_node
 from kv_eval.nodes.setup import setup_node
@@ -25,8 +26,8 @@ from kv_eval.state import MainState, TechResearchInput, WorkerInput
 # 외부 호출의 일시 오류는 RetryPolicy가 재시도한다. 소진 시에는 예외가 전파된다.
 # 그 외 외부 노드 실패는 래퍼가 기록하고, 규칙 노드의 오류는 그대로 전파한다.
 # 품질 평가 노드는 LLM Judge를 쓰므로 여기에 넣는다. Judge가 실패해도 보고서 생성은 멈추지 않는다(fail_soft).
-# TODO[3-승민·4-선우] neutrality / bias_control 노드를 QUALITY_NODES에 추가한다.
-QUALITY_NODES: dict[str, object] = {"coverage": coverage_node}
+# TODO[4-선우] bias_control 노드를 QUALITY_NODES에 추가한다.
+QUALITY_NODES: dict[str, object] = {"coverage": coverage_node, "neutrality": neutrality_node}
 EXTERNAL_NODES: frozenset[str] = frozenset({"tech_research", "orchestrator", "worker", "synthesis", *QUALITY_NODES})
 RETRY_POLICY = RetryPolicy(max_attempts=3, retry_on=is_retryable)
 
