@@ -102,7 +102,7 @@ def orchestrator_node(state: MainState) -> MainState:
     if state.get("node_runs", 0) >= MAX_NODE_RUNS or (
         previous is not None and previous.round >= MAX_PLAN_ROUNDS
     ):
-        # 빈 계획은 이후 연결할 배분 경로에서 synthesis로 마무리하라는 뜻이다.
+        # 빈 계획은 배분 경로에서 synthesis로 마무리하라는 뜻이다.
         # 전체 실행 예산을 소진하면 새 라운드를 시작하지 않는다.
         decision = "budget_exhausted"
         reason = "계획 라운드 또는 노드 실행 상한에 도달했다."
@@ -159,4 +159,4 @@ def orchestrator_node(state: MainState) -> MainState:
 # TODO[1-우진] 최초 네 관점 평가와 선택적 재계획이 과제의 동적 분할 요건을 충족하는지 확인한다.
 #   현재 최초 작업 수는 고정이며 기술별 분할은 2차 확장이다. LLM 사용만으로 OW 완료라 하지 않는다.
 # TODO[1-우진] TRL과 시장성은 아직 focus를 읽지 않는다. 워커 담당자와 실제 검색 연결을 맞춘다.
-#   지시 생성은 실행 범위 변경의 증거가 아니다. Send 배분과 그래프 연결은 다음 단계에서 구현한다.
+#   지시 생성은 실행 범위 변경의 증거가 아니다.

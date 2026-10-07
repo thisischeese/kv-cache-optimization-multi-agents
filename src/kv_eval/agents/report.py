@@ -27,6 +27,7 @@ from kv_eval.references import (
     cite,
     known_citation_ids,
 )
+from kv_eval.results import get_result
 from kv_eval.schemas import (
     CheckResult,
     DomainSpec,
@@ -128,9 +129,8 @@ def _matrix(state: MainState, synthesis: Synthesis | None) -> str:
     cells: dict[tuple[str, str], str] = {}
     if synthesis:
         cells = {(c.perspective, c.tech_id): c.summary for c in synthesis.matrix}
-    for perspective, key in (("trl", "trl_eval"), ("market", "market_eval"),
-                             ("stakeholder", "stakeholder_eval"), ("domain", "domain_eval")):
-        result = state.get(key)
+    for perspective in _PERSPECTIVE_LABEL:
+        result = get_result(state, perspective)
         if result is not None:
             for tid, text in result.tech_results.items():
                 cells.setdefault((perspective, tid), text)
@@ -180,9 +180,6 @@ def _revise(body: str, state: MainState) -> str:
     return "\n".join(lines)
 
 
-# TODO[1-우진] 관점 결과를 state["results"]에서 읽는다. 아래의 state.get("trl_eval") 등 4곳과 _matrix의 키 목록을 바꾼다.
-#   계획에서 빠졌거나 실패한 작업(task_status)은 해당 절에 "(결과 없음)"으로 남기고 6장 한계점에 사유를 적는다.
-#   커버리지 평가(5번)가 이 표기를 기준으로 판정한다.
 def report_agent(state: MainState) -> MainState:
     targets: list[Tech] = state.get("targets", [])
     domain: DomainSpec | None = state.get("domain")
@@ -222,19 +219,19 @@ def report_agent(state: MainState) -> MainState:
 
 ## 4.1 TRL
 
-{_trl(state.get("trl_eval"))}
+{_trl(get_result(state, "trl"))}
 
 ## 4.2 시장성
 
-{_perspective(state.get("market_eval"))}
+{_perspective(get_result(state, "market"))}
 
 ## 4.3 이해관계자
 
-{_perspective(state.get("stakeholder_eval"))}
+{_perspective(get_result(state, "stakeholder"))}
 
 ## 4.4 도메인 (클라우드 서빙)
 
-{_perspective(state.get("domain_eval"))}
+{_perspective(get_result(state, "domain"))}
 
 # 5. 종합 의견 및 시사점
 

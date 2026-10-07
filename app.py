@@ -25,15 +25,8 @@ from kv_eval.config import (
 from kv_eval.graph import graph
 from kv_eval.observability import log_event, run_config, run_dir
 from kv_eval.pdf import markdown_to_pdf
+from kv_eval.results import get_result
 from kv_eval.state import MainState
-
-# TODO[1-우진] 전환 뒤 이 매핑을 지우고, 관점별 출력은 state["results"]와 task_status를 기준으로 한다.
-_STATE_KEY_BY_PERSPECTIVE: dict[str, str] = {
-    "trl": "trl_eval",
-    "market": "market_eval",
-    "stakeholder": "stakeholder_eval",
-    "domain": "domain_eval",
-}
 
 
 def main() -> None:
@@ -80,6 +73,7 @@ def main() -> None:
     log_event(
         run_id, "app", "run_end",
         node_runs=final_state.get("node_runs", 0), not_ok=not_ok, report_issues=len(issues),
+        task_status=final_state.get("task_status", {}),
     )
 
     print("Graph execution completed.")
@@ -94,8 +88,9 @@ def main() -> None:
     print("Perspective results:")
     for perspective in PERSPECTIVES:
         label = perspective.capitalize() if perspective != "trl" else "TRL"
-        present = final_state.get(_STATE_KEY_BY_PERSPECTIVE[perspective]) is not None
-        print(f"- {label}: {'OK' if present else 'MISSING'}")
+        present = get_result(final_state, perspective) is not None
+        status = final_state.get("task_status", {}).get(perspective, "MISSING")
+        print(f"- {label}: {status}" + ("" if present else " (결과 없음)"))
 
     print()
     print(f"Node runs: {final_state.get('node_runs', 0)}")
