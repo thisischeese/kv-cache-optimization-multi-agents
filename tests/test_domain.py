@@ -249,3 +249,46 @@ def test_node_failure_keeps_the_graph_running(monkeypatch: pytest.MonkeyPatch) -
 
     assert "완료하지 못함" in result.summary
     assert result.evidence == []
+
+
+def test_extraction_has_bounded_output_and_short_prompt(monkeypatch) -> None:
+    """무제한 장문 추출 대신 제한된 근거와 호출 예산을 요청한다."""
+    from types import SimpleNamespace
+    seen = {}
+
+    def model(**kwargs):
+        seen.update(kwargs)
+        def structured(schema, **options):
+            assert options == {"method": "function_calling", "strict": False}
+            def invoke(messages):
+                assert "최대 8건" in messages[0][1]
+                assert "한국어 150자 이내" in messages[0][1]
+                return domain._LLMDomainFindings(findings=[])
+            return SimpleNamespace(invoke=invoke)
+        return SimpleNamespace(with_structured_output=structured)
+
+    monkeypatch.setattr(domain, "chat_model", model)
+    assert domain._llm_extract("KIVI", "원문") == []
+    assert seen == {"temperature": 0, "max_tokens": 4096, "timeout": 90, "max_retries": 0}
+
+
+def test_extraction_retries_truncated_response_only_once(monkeypatch) -> None:
+    from types import SimpleNamespace
+    from langchain_core.exceptions import OutputParserException
+    calls = []
+    def invoke(messages):
+        calls.append(messages[0][1])
+        if len(calls) == 1:
+            raise OutputParserException("truncated output")
+        return domain._LLMDomainFindings(findings=[_finding("cost", "kivi", 1, "추가 검증이 필요하다.")])
+    monkeypatch.setattr(domain, "_structured_llm", lambda schema: SimpleNamespace(invoke=invoke))
+    assert len(domain._llm_extract("KIVI", "원문")) == 1
+    assert len(calls) == 2 and "최대 2건" in calls[1]
+    calls.clear()
+    def fail(messages):
+        calls.append(messages)
+        raise OutputParserException("truncated output")
+    monkeypatch.setattr(domain, "_structured_llm", lambda schema: SimpleNamespace(invoke=fail))
+    with pytest.raises(OutputParserException):
+        domain._llm_extract("KIVI", "원문")
+    assert len(calls) == 2

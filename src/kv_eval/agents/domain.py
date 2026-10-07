@@ -581,17 +581,28 @@ def _llm_enabled() -> bool:
 
 
 def _structured_llm(schema: type[BaseModel]):
-    return chat_model(temperature=0).with_structured_output(schema)
+    model = chat_model(temperature=0, max_tokens=4096, timeout=90, max_retries=0)
+    return model.with_structured_output(schema, method="function_calling", strict=False)
 
 
 def _llm_extract(tech_name: str, context: str) -> list[_LLMDomainFinding]:
-    result = _structured_llm(_LLMDomainFindings).invoke(
-        [
-            ("system", load_domain_prompt("추출 프롬프트")),
-            ("human", f"평가 대상 기술: {tech_name}\n\n[검색된 논문 청크]\n{context}"),
-        ]
-    )
-    return result.findings
+    from langchain_core.exceptions import OutputParserException
+    from openai import LengthFinishReasonError
+
+    # 잘린 응답을 같은 크기로 반복하지 않고 한 번만 더 짧게 요청한다.
+    for limit in (8, 2):
+        try:
+            result = _structured_llm(_LLMDomainFindings).invoke([
+                ("system", load_domain_prompt("추출 프롬프트") + f"\n최대 {limit}건만 추출하세요. "
+                 "네 지표의 긍정 근거와 한계를 고르게 선택하고 중복 주장을 반복하지 마세요. "
+                 "claim은 한국어 150자 이내, quote는 근거가 되는 원문 1문장만 쓰세요."),
+                ("human", f"평가 대상 기술: {tech_name}\n\n[검색된 논문 청크]\n{context}"),
+            ])
+            return result.findings
+        except (LengthFinishReasonError, OutputParserException):
+            if limit == 2:
+                raise
+            logger.warning("도메인 추출 응답이 잘리거나 해석되지 않아 최대 2건으로 재시도합니다.")
 
 
 def _llm_judge(items: list[JudgeInput]) -> list[Stance | None]:
