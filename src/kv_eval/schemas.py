@@ -145,19 +145,34 @@ class Synthesis(BaseModel):
 
 # ---- Report quality evaluation (요구사항 D) ----
 
-# TODO[5-진호] 품질 평가 공통 계약. 3번·4번·5번이 함께 쓰므로 가장 먼저 머지한다.
-#   QualityCriterion = Literal["groundedness", "neutrality", "bias_control", "coverage"]
-#
-#   class QualityVerdict(BaseModel):
-#       criterion: QualityCriterion
-#       passed: bool
-#       method: Literal["rule", "llm", "hybrid"]   # 실제로 수행한 평가 방식(3안이면 "hybrid")
-#       issues: list[str] = []    # 미달 사유. "근거 부족:" 접두어 = 재작성으로 못 고침(재계획 대상)
-#       targets: list[str] = []   # report._revise가 고칠 문장 원문
-#       notes: list[str] = []     # 차단하지 않는 메모. 예: "LLM 미평가", "미평가: mock 근거"
-#
-#   다음 노드가 읽는 사유(issues, targets)만 State에 둔다.
-#   LLM 원응답이나 점수 상세는 log_event로 보낸다(0번 관측성 원칙).
+QualityCriterion = Literal["groundedness", "neutrality", "bias_control", "coverage"]
+
+# issues 앞에 붙이는 접두어. 보고서 재작성으로 못 고치는 이슈라는 표시다.
+# review 게이트는 이 이슈를 재작성(retry) 대신 재계획(replan) 또는 한계점 기록으로 보낸다.
+EVIDENCE_GAP_PREFIX = "근거 부족:"
+
+
+class QualityVerdict(BaseModel):
+    """One report quality criterion's result. 3번·4번·5번 평가 노드가 같은 계약을 쓴다.
+
+    다음 노드가 읽는 사유(issues, targets)만 State에 둔다. LLM 원응답이나
+    점수 상세는 log_event로 보낸다(관측성 원칙).
+    """
+
+    criterion: QualityCriterion
+    passed: bool
+    method: Literal["rule", "llm", "hybrid"]   # 실제로 수행한 평가 방식(3안이면 "hybrid")
+    issues: list[str] = Field(default_factory=list)   # 미달 사유. EVIDENCE_GAP_PREFIX = 재계획 대상
+    targets: list[str] = Field(default_factory=list)  # report._revise가 고칠 문장 원문
+    notes: list[str] = Field(default_factory=list)    # 차단하지 않는 메모. 예: "LLM 미평가"
+    # 근거를 더 모아야 하는 관점(task_id). review가 replan으로 보내면 orchestrator가 이 관점만 다시 계획한다.
+    # EVIDENCE_GAP_PREFIX 이슈가 특정 관점의 결과 부족 때문일 때만 채운다.
+    rework_perspectives: list[str] = Field(default_factory=list)
+
+    @property
+    def evidence_gaps(self) -> list[str]:
+        """재작성으로 못 고치는 이슈만."""
+        return [i for i in self.issues if i.startswith(EVIDENCE_GAP_PREFIX)]
 
 
 # ---- Orchestrator-Worker plan and run control ----

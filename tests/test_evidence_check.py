@@ -113,6 +113,8 @@ def _run_with_weak_stakeholder(monkeypatch) -> tuple[dict, Counter]:
     steps = Counter()
     for update in graph.stream({}, stream_mode="updates"):
         steps.update(update.keys())
+        if "worker" in update:
+            steps.update(update["worker"].get("task_status", {}).keys())
     return final, steps
 
 
@@ -123,8 +125,8 @@ def test_only_failing_perspective_is_rechecked_once(monkeypatch) -> None:
     assert steps["market"] == 1               # passing perspectives don't re-run
     assert steps["evidence_check"] == 2       # once per round, not once per node
     assert steps["synthesis"] == 1
-    assert final["recheck_count"]["stakeholder"] == 1
-    assert final["recheck_targets"] == []
+    assert final["plan"].round == 2
+    assert [(task.task_id, task.attempt) for task in final["plan"].tasks] == [("stakeholder", 2)]
     # Budget spent: still failing, recorded, and the graph moved on.
     assert not final["evidence_check"]["stakeholder"].passed
     assert final["report_md"]
@@ -135,7 +137,7 @@ def test_first_pass_runs_evidence_check_once() -> None:
     for update in graph_module.graph.stream({}, stream_mode="updates"):
         steps.update(update.keys())
     assert steps["evidence_check"] == 1
-    assert all(steps[p] == 1 for p in ("trl", "market", "stakeholder", "domain"))
+    assert steps["worker"] == 4
 
 
 def test_tech_research_fans_out_one_run_per_tech(monkeypatch) -> None:
@@ -161,4 +163,4 @@ def test_tech_research_fans_out_one_run_per_tech(monkeypatch) -> None:
     for update in graph.stream({}, stream_mode="updates"):
         steps.update(update.keys())
     assert steps["tech_research"] == 2
-    assert all(steps[p] == 1 for p in ("trl", "market", "stakeholder", "domain"))
+    assert steps["worker"] == 4
