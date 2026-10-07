@@ -12,6 +12,7 @@ CID font HYGothic-Medium (no font file needed, renders in standard viewers).
 """
 
 import re
+from io import BytesIO
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -36,6 +37,30 @@ from reportlab.platypus import (
 )
 
 from kv_eval.config import PDF_FONT_CANDIDATES, pdf_font_path
+
+MAX_REPORT_PAGES = 10
+
+
+def report_pdf_options() -> dict[str, str]:
+    """사전 검사와 최종 출력에 같은 표제와 부제를 사용한다."""
+    from kv_eval.config import TEAM_CAMPUS, TEAM_CLASS, TEAM_MEMBERS
+
+    return {
+        "title": "KV Cache 최적화 기술 다관점 평가 보고서",
+        "subtitle": "KIVI(SW) vs InfiniGen(HW) - Cloud LLM Serving\n"
+        + f"{TEAM_CAMPUS} {TEAM_CLASS} - {', '.join(TEAM_MEMBERS)}",
+    }
+
+
+def report_page_count(markdown: str) -> int:
+    """파일을 만들지 않고 최종 레이아웃의 실제 페이지 수를 센다."""
+    import pymupdf
+
+    buffer = BytesIO()
+    markdown_to_pdf(markdown, buffer, **report_pdf_options())
+    with pymupdf.open(stream=buffer.getvalue(), filetype="pdf") as document:
+        return len(document)
+
 
 _FONT_NAME = "ReportKR"
 
@@ -171,11 +196,12 @@ def _bullet_item(text: str, st: dict[str, ParagraphStyle]) -> list[Paragraph]:
     return head + [Paragraph("· " + _inline(line), st["sub"]) for line in lines]
 
 
-def markdown_to_pdf(markdown: str, output: Path, *, title: str | None = None,
-                    subtitle: str | None = None) -> Path:
+def markdown_to_pdf(markdown: str, output: Path | BytesIO, *, title: str | None = None,
+                    subtitle: str | None = None, max_pages: int | None = None) -> Path | BytesIO:
     font = _register_font()
     st = _styles(font)
-    doc = SimpleDocTemplate(str(output), pagesize=A4, leftMargin=20 * mm, rightMargin=20 * mm,
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=20 * mm, rightMargin=20 * mm,
                             topMargin=18 * mm, bottomMargin=18 * mm, title=title or "")
     story: list = []
     bullets: list[str] = []
@@ -244,6 +270,18 @@ def markdown_to_pdf(markdown: str, output: Path, *, title: str | None = None,
             canvas.drawString(20 * mm, 10 * mm, title)
         canvas.restoreState()
 
-    output.parent.mkdir(parents=True, exist_ok=True)
     doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    data = buffer.getvalue()
+    if max_pages is not None:
+        import pymupdf
+
+        with pymupdf.open(stream=data, filetype="pdf") as document:
+            if len(document) > max_pages:
+                raise ValueError(f"PDF 페이지 초과: {len(document)}쪽 (최대 {max_pages}쪽)")
+    # 초과한 문서로 기존 제출 파일을 덮어쓰지 않는다.
+    if isinstance(output, BytesIO):
+        output.write(data)
+    else:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(data)
     return output

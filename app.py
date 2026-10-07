@@ -15,9 +15,6 @@ from kv_eval.config import (
     PDF_PATH,
     PERSPECTIVES,
     REPORT_PATH,
-    TEAM_CAMPUS,
-    TEAM_CLASS,
-    TEAM_MEMBERS,
     embedding_model_name,
     llm_enabled,
     llm_model,
@@ -27,7 +24,7 @@ from kv_eval import checkpoint
 from kv_eval.graph import build_graph
 from kv_eval.instrument import is_retryable
 from kv_eval.observability import log_event, run_config, run_dir
-from kv_eval.pdf import markdown_to_pdf
+from kv_eval.pdf import MAX_REPORT_PAGES, markdown_to_pdf, report_pdf_options
 from kv_eval.results import get_result
 from kv_eval.state import MainState
 
@@ -76,16 +73,27 @@ def main() -> None:
 
     
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    # 제출 검사 실패 시에도 실행별 초안은 남기고 기존 제출 파일은 보존한다.
+    run_path = run_dir(run_id)
+    draft_path = run_path / "report.md"
+    draft_path.write_text(final_state["report_md"], encoding="utf-8")
+    try:
+        failures = [line for line in final_state["report_md"].splitlines()
+                    if line.startswith("제출용 한국어 정리 미완료:")]
+        if failures:
+            raise ValueError("; ".join(failures))
+        markdown_to_pdf(
+            final_state["report_md"], PDF_PATH,
+            max_pages=MAX_REPORT_PAGES, **report_pdf_options(),
+        )
+    except ValueError as exc:
+        log_event(run_id, "app", "output_blocked", str(exc), draft=str(draft_path))
+        previous = "기존 PDF는 이전 실행 결과이며 그대로 유지했습니다" if PDF_PATH.exists() else "새 PDF를 생성하지 않았습니다"
+        raise ValueError(
+            f"{exc}\n이번 실행의 공용 보고서는 갱신하지 않았습니다.\n"
+            f"{previous}: {PDF_PATH}\n최신 초안: {draft_path}"
+        ) from exc
     REPORT_PATH.write_text(final_state["report_md"], encoding="utf-8")
-    markdown_to_pdf(
-        final_state["report_md"],
-        PDF_PATH,
-        title="KV Cache 최적화 기술 다관점 평가 보고서",
-        subtitle=(
-            "KIVI(SW) vs InfiniGen(HW) · Cloud LLM Serving\n"
-            f"{TEAM_CAMPUS} {TEAM_CLASS} · {', '.join(TEAM_MEMBERS)}"
-        ),
-    )
     issues_path = OUTPUT_DIR / "report_issues.txt"
     issues = final_state.get("report_issues", [])
     if issues:
@@ -94,8 +102,6 @@ def main() -> None:
         issues_path.unlink()
 
     # Per-run copy next to the decision log; the paths above are overwritten each run.
-    run_path = run_dir(run_id)
-    (run_path / "report.md").write_text(final_state["report_md"], encoding="utf-8")
     if issues:
         (run_path / "report_issues.txt").write_text("\n".join(issues) + "\n", encoding="utf-8")
 

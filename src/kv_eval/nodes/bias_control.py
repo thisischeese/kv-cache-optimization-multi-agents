@@ -101,6 +101,9 @@ _FIGURE = re.compile(r"\d+(?:\.\d+)?\s*(?:%|배|×|x\b|GB|GiB|MB|ms|초|tokens?/
 _CONFLICT_LABEL = re.compile(r"^(?:\*\*|#+ ).*(?:관점 간 상충|엇갈리는 지점).*$", re.MULTILINE)
 _NEXT_BLOCK = re.compile(r"^(?:\*\*|#)", re.MULTILINE)
 _EMPTY_BULLET = "- (없음)"
+_EMPTY_BULLETS = (
+    _EMPTY_BULLET, "- 수집된 근거 없음", "- 종합 단계에서 관점 간 상충을 도출하지 못함",
+)
 
 
 class StanceSplit(BaseModel):
@@ -567,8 +570,9 @@ def _insert_splits(body: str, lines: list[str]) -> str:
     nxt = _NEXT_BLOCK.search(body, start + 1)
     end = nxt.start() if nxt else len(body)
     segment = body[start:end]
-    if _EMPTY_BULLET in segment:
-        segment = segment.replace(_EMPTY_BULLET, block, 1)
+    empty = next((text for text in _EMPTY_BULLETS if text in segment), None)
+    if empty:
+        segment = segment.replace(empty, block, 1)
     else:
         segment = f"{segment.rstrip()}\n{block}\n\n"
     return body[:start] + segment + body[end:]
@@ -611,13 +615,15 @@ def _insert_evidence(body: str, perspective: str, evidence: Evidence) -> str:
     nxt = _ANY_HEADING.search(body, heading.end() + 1)
     end = nxt.start() if nxt else len(body)
     section = body[heading.end():end]
-    at = section.find(_EVIDENCE_LABEL)
+    label = "**핵심 근거**" if "**핵심 근거**" in section else _EVIDENCE_LABEL
+    at = section.find(label)
     if at < 0:
         return body  # "(결과 없음)": a missing result is the coverage check's finding
-    split = at + len(_EVIDENCE_LABEL)
+    split = at + len(label)
     line = f"- {evidence.claim} {cite(evidence)}"
     rest = section[split:].lstrip("\n")
-    rest = rest.replace(_EMPTY_BULLET, line, 1) if rest.startswith(_EMPTY_BULLET) else f"{line}\n{rest}"
+    empty = next((text for text in _EMPTY_BULLETS if rest.startswith(text)), None)
+    rest = rest.replace(empty, line, 1) if empty else f"{line}\n{rest}"
     return body[:heading.end()] + section[:split] + "\n\n" + rest + body[end:]
 
 
