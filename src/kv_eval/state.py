@@ -18,7 +18,7 @@ orchestrator-worker switch moves their readers to `results` and `plan`.
 """
 
 import operator
-from typing import Annotated, TypedDict
+from typing import Annotated, NotRequired, TypedDict
 
 from kv_eval.schemas import (
     CheckResult,
@@ -56,6 +56,7 @@ class TechResearchInput(TypedDict):
 
     target: Tech
     domain: DomainSpec
+    run_id: NotRequired[str]   # present only when the run has one
 
 
 class WorkerInput(TypedDict):
