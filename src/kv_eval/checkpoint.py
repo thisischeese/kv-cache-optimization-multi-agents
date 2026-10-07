@@ -13,8 +13,10 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.graph.state import CompiledStateGraph
 
 from kv_eval.config import RUNS_DIR
+from kv_eval.observability import run_config
 
 
 @contextmanager
@@ -25,6 +27,10 @@ def open_checkpointer(path: Path = RUNS_DIR / "checkpoints.sqlite") -> Iterator[
     with SqliteSaver.from_conn_string(str(path)) as saver:
         yield saver
 
+def can_resume(graph: CompiledStateGraph, run_id: str) -> bool:
+    """True when the run stopped partway: its last checkpoint still has nodes
+    to run. A finished run or an unknown run_id has nothing next."""
+    return bool(graph.get_state(run_config(run_id)).next)
 
 # TODO[2-승은] 의존성: pyproject.toml에 langgraph-checkpoint-sqlite를 추가하고 uv sync를 실행한다(설치완료). ✅
 #
