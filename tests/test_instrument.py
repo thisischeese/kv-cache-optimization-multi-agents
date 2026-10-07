@@ -136,6 +136,7 @@ def test_run_config_joins_run_id_to_trace_and_sets_recursion_limit() -> None:
     assert config["run_id"] == uuid.UUID(run_id)        # LangSmith root run id
     assert config["metadata"] == {"run_id": run_id}     # searchable in LangSmith
     assert config["recursion_limit"] == GRAPH_RECURSION_LIMIT
+    assert config["configurable"] == {"thread_id": run_id}  # checkpoint thread
 
 
 @pytest.mark.parametrize("bad", ["", "..", "a/b", "../x"])
