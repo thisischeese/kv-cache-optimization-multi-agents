@@ -27,6 +27,7 @@ from kv_eval.observability import log_event, run_config, run_dir
 from kv_eval.pdf import markdown_to_pdf
 from kv_eval.state import MainState
 
+# TODO[1-우진] 전환 뒤 이 매핑을 지우고, 관점별 출력은 state["results"]와 task_status를 기준으로 한다.
 _STATE_KEY_BY_PERSPECTIVE: dict[str, str] = {
     "trl": "trl_eval",
     "market": "market_eval",
@@ -38,6 +39,14 @@ _STATE_KEY_BY_PERSPECTIVE: dict[str, str] = {
 def main() -> None:
     load_dotenv()
 
+    # TODO[2-승은] 체크포인터와 재개
+    #   - argparse로 --resume <run_id>를 받는다. 없으면 지금처럼 새 run_id를 만든다.
+    #   - with checkpoint.open_checkpointer() as saver: 블록 안에서 build_graph(checkpointer=saver)로 빌드한다.
+    #     모듈 전역 graph는 체크포인터가 없으므로 여기서는 쓰지 않는다.
+    #   - 새 실행: graph.invoke({"run_id": run_id}, run_config(run_id))
+    #     재개:    checkpoint.can_resume으로 확인한 뒤 graph.invoke(None, run_config(run_id)),
+    #              log_event(run_id, "app", "run_resume")
+    #   - 재시도 대상 예외로 실행이 중단되면 재개 명령(uv run python app.py --resume <run_id>)을 안내하고 종료한다.
     run_id = str(uuid.uuid4())
     log_event(run_id, "app", "run_start")
     final_state: MainState = graph.invoke({"run_id": run_id}, run_config(run_id))

@@ -143,6 +143,23 @@ class Synthesis(BaseModel):
     limitations: list[str] = Field(default_factory=list)
 
 
+# ---- Report quality evaluation (요구사항 D) ----
+
+# TODO[5-진호] 품질 평가 공통 계약. 3번·4번·5번이 함께 쓰므로 가장 먼저 머지한다.
+#   QualityCriterion = Literal["groundedness", "neutrality", "bias_control", "coverage"]
+#
+#   class QualityVerdict(BaseModel):
+#       criterion: QualityCriterion
+#       passed: bool
+#       method: Literal["rule", "llm", "hybrid"]   # 실제로 수행한 평가 방식(3안이면 "hybrid")
+#       issues: list[str] = []    # 미달 사유. "근거 부족:" 접두어 = 재작성으로 못 고침(재계획 대상)
+#       targets: list[str] = []   # report._revise가 고칠 문장 원문
+#       notes: list[str] = []     # 차단하지 않는 메모. 예: "LLM 미평가", "미평가: mock 근거"
+#
+#   다음 노드가 읽는 사유(issues, targets)만 State에 둔다.
+#   LLM 원응답이나 점수 상세는 log_event로 보낸다(0번 관측성 원칙).
+
+
 # ---- Orchestrator-Worker plan and run control ----
 
 WorkerKind = Literal["trl", "market", "stakeholder", "domain"]

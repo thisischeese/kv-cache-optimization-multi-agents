@@ -100,6 +100,8 @@ class MainState(TypedDict, total=False):
     report_md: str
 
     # 이전 계약. orchestrator-worker 전환 후 `results`로 대체
+    # TODO[1-우진] synthesis·report·references·evidence_check·app.py가 모두 `results`를 읽게 바꾼 뒤
+    #   아래 네 필드를 지운다. 관련 테스트(test_graph, test_evidence_check 등)도 함께 고친다.
     trl_eval: TRLResult
     market_eval: PerspectiveResult
     stakeholder_eval: PerspectiveResult
@@ -109,7 +111,13 @@ class MainState(TypedDict, total=False):
     evidence_check: dict[str, CheckResult]
     report_issues: list[str]
 
+    # TODO[5-진호] 보고서 품질 평가 결과 필드를 추가한다(schemas.QualityVerdict 확정 뒤, 0번 다은 리뷰).
+    #   quality_checks: Annotated[dict[str, QualityVerdict], merge_by_key]   # criterion 키
+    #   평가 노드들이 report 뒤에 병렬로 쓰므로 reducer가 필요하다. 재평가 때는 자기 키만 덮어쓴다.
+    #   report_issues는 review 게이트가 이 값을 모아 혼자 쓰는 필드로 유지한다.
+
     # 이전 계약. 전환 후 다음 라운드 `plan.tasks`로 대체
+    # TODO[1-우진] 전환 뒤 recheck_targets와 아래 recheck_count를 지운다. setup_node의 초기값도 함께 정리한다.
     recheck_targets: list[str]
 
     # ── 종료 보장 ──────────────────────────────────────────

@@ -80,11 +80,21 @@ BANNED_EXPRESSIONS: tuple[str, ...] = ("우수", "열등", "승자", "더 낫", 
 ALLOWED_NEGATIONS: tuple[str, ...] = ("추천하지 않", "추천을 하지 않", "우열을 가리지 않")
 MAX_REPORT_REVISIONS = 1
 
+# --- report quality evaluation (요구사항 D) ---
+# TODO[3-승민] NEUTRALITY_PATTERNS: 비교·권고 구문 정규식 목록
+#   NEUTRALITY_MENTION_RATIO: 기술별 언급 비율 허용 범위(예: (0.35, 0.65))
+#   BANNED_EXPRESSIONS / ALLOWED_NEGATIONS는 위에 있다. neutrality 노드가 이어받는다.
+# TODO[4-선우] MAX_SINGLE_SOURCE_SHARE (예: 0.5), MIN_DISTINCT_SOURCES_PER_TECH (예: 2),
+#   MIN_SOURCE_TYPES_PER_TECH (예: 2). 임계값을 바꾸면 BIAS_MEASURES 문구도 함께 맞춘다.
+# TODO[5-진호] 커버리지 임계값이 필요하면 여기에 둔다(예: MIN_CITATIONS_PER_PERSPECTIVE = 1).
+
 # --- orchestrator-worker / run control ---
 MAX_PLAN_ROUNDS = 2        # round 1 + one re-plan (same budget as the old recheck)
 MAX_TASK_ATTEMPTS = 2
 MAX_TASKS_PER_ROUND = 8    # caps an LLM plan that inflates the task list
 # Normal path runs at most 18 nodes; past this, routers force the run to finish.
+# TODO[1-우진·5-진호] orchestrator/worker와 품질 평가 노드를 추가하면 최대 실행 수를 다시 계산하고
+#   이 상한을 조정한다(평가 노드 3개 x 보고서 라운드 수 + 재계획 라운드).
 MAX_NODE_RUNS = 30
 GRAPH_RECURSION_LIMIT = 40  # last-resort guard passed in the invoke config
 
