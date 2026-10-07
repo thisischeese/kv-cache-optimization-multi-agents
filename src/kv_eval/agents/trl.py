@@ -21,7 +21,7 @@ from kv_eval.agents.trl_queries import (
     build_trl_rag_queries,
     build_trl_web_queries,
 )
-from kv_eval.config import PROJECT_ROOT, SOURCES_PATH, llm_enabled, llm_model, perplexity_api_key
+from kv_eval.config import PROJECT_ROOT, SOURCES_PATH, TECH_IDS, llm_enabled, llm_model, perplexity_api_key
 from kv_eval.rag.retriever import retrieve
 from kv_eval.rag.types import RetrievedChunk
 from kv_eval.schemas import Evidence, TRLLevel, TRLResult
@@ -116,12 +116,14 @@ def _search_web_with_cache(query: str, domains: list[str]) -> list[WebEvidence]:
 
 
 def _collect_rag_chunks(
-    tech_id: str, tech_name: str, top_k: int = 5,
+    tech_id: str, tech_name: str, top_k: int = 5, *, focus: list[str] | None = None,
 ) -> list[RetrievedChunk]:
     """원 논문, 후속 논문, 외부 벤치마크가 검색 순위에서 서로 밀리지 않게 수집한다."""
     chunks: dict[tuple[str, int, int, str], RetrievedChunk] = {}
     for doc_type in TRL_EVIDENCE_RULES["trl_1_5"]["doc_types"]:
         for query in build_trl_rag_queries(tech_name):
+            if focus:
+                query += " " + "; ".join(focus)
             for item in retrieve(
                 query=query, tech_id=tech_id, doc_types=[doc_type], top_k=top_k,
             ):
@@ -440,9 +442,11 @@ def _rag_evidence(chunks: list[RetrievedChunk], tech_id: str) -> list[Evidence]:
     return [output[key] for key in sorted(output)]
 
 
-def _collect_evidence(tech_id: str, tech_name: str, top_k: int = 5):
+def _collect_evidence(
+    tech_id: str, tech_name: str, top_k: int = 5, *, focus: list[str] | None = None,
+):
     evidence = _rag_evidence(
-        _collect_rag_chunks(tech_id=tech_id, tech_name=tech_name, top_k=top_k), tech_id,
+        _collect_rag_chunks(tech_id=tech_id, tech_name=tech_name, top_k=top_k, focus=focus), tech_id,
     )
     gaps: list[str] = []
     audit: list[dict] = []
@@ -454,6 +458,8 @@ def _collect_evidence(tech_id: str, tech_name: str, top_k: int = 5):
             for query in build_trl_web_queries(tech_name, fallback=fallback):
                 if fallback and query["source_type"] in found:
                     continue
+                if focus:
+                    query = {**query, "query": query["query"] + " " + "; ".join(focus)}
                 record = dict(query, fallback=fallback, status="completed", results=[])
                 audit.append(record)
                 try:
@@ -681,7 +687,7 @@ def _evaluate(
     ), [used[key] for key in sorted(used)]
 
 
-def trl_agent(state: MainState) -> MainState:
+def trl_agent(state: MainState) -> dict[str, TRLResult]:
     """RAG 및 공식 웹 원문을 평가하고 내부 met 검증 후 기존 출력 계약을 반환한다."""
     if not llm_enabled():
         if os.getenv("KV_EVAL_OFFLINE") != "1":
@@ -691,8 +697,15 @@ def trl_agent(state: MainState) -> MainState:
     levels = {}
     descriptions = {}
     output = []
+    check = state.get("evidence_check", {}).get("trl")
+    missing = check.missing if check is not None else []
     for tech in state.get("targets", []):
-        evidence, gaps = _collect_evidence(tech.tech_id, tech.name)
+        # 다른 기술에만 해당하는 보완 사유는 이 기술의 검색어에 넣지 않는다.
+        focus = [item.strip() for item in missing if item.strip() and (
+            item.partition(":")[0].strip() not in TECH_IDS
+            or item.partition(":")[0].strip() == tech.tech_id
+        )]
+        evidence, gaps = _collect_evidence(tech.tech_id, tech.name, focus=focus)
         # 검색 누락/잘못된 구조화 출력은 한 번만 확장 검색하고 재평가한다.
         for attempt in range(2):
             try:
@@ -713,7 +726,7 @@ def trl_agent(state: MainState) -> MainState:
             except (TRLEvidenceError, ValidationError):
                 if attempt:
                     raise
-                evidence, gaps = _collect_evidence(tech.tech_id, tech.name, top_k=10)
+                evidence, gaps = _collect_evidence(tech.tech_id, tech.name, top_k=10, focus=focus)
         levels[tech.tech_id] = level
         descriptions[tech.tech_id] = (
             f"{tech.name}의 추정 TRL은 {level.level}이다. "

@@ -5,7 +5,9 @@ from collections import Counter
 
 import pytest
 
-from kv_eval.schemas import Evidence, PerspectiveResult, Plan, TechProfile, TRLLevel, TRLResult
+from kv_eval.config import MAX_NODE_RUNS, MAX_PLAN_ROUNDS, MAX_REPORT_REVISIONS
+from kv_eval.schemas import CheckResult, Evidence, PerspectiveResult, Plan, TechProfile, TRLLevel, TRLResult
+from kv_eval.state import MainState
 
 
 graph_module = sys.modules["kv_eval.graph"]
@@ -38,6 +40,8 @@ def offline_agents(monkeypatch):
 def test_graph_runs_end_to_end(offline_agents):
     final = graph_module.build_graph().invoke({})
     assert set(final["results"]) == {"trl", "market", "stakeholder", "domain"}
+    removed = {"trl_eval", "market_eval", "stakeholder_eval", "domain_eval", "recheck_targets", "recheck_count"}
+    assert removed.isdisjoint(final) and removed.isdisjoint(MainState.__annotations__)
     assert all(count == 1 for count in offline_agents.values())
     assert all(check.passed for check in final["evidence_check"].values())
     assert final["results"]["trl"].levels["kivi"].level == 5
@@ -78,3 +82,18 @@ def test_empty_plan_goes_directly_to_synthesis(monkeypatch, offline_agents):
     assert "evidence_check" not in final["node_status"]
     assert "synthesis" in final["node_status"]
     assert "SUMMARY" in final["report_md"] and "REFERENCE" in final["report_md"]
+
+
+def test_budget_covers_all_task_retries_and_report_revision(monkeypatch, offline_agents):
+    monkeypatch.setattr(graph_module, "evidence_check_node", lambda state: {
+        "evidence_check": {task.task_id: CheckResult(passed=False, missing=["근거 보완"])
+                           for task in state["plan"].tasks},
+    })
+    monkeypatch.setattr(graph_module, "report_agent", lambda state: {"report_md": "형식 미달 보고서"})
+    final = graph_module.build_graph().invoke({})
+    assert all(count == MAX_PLAN_ROUNDS for count in offline_agents.values())
+    assert final["plan"].round == MAX_PLAN_ROUNDS
+    assert final["report_revision"] == MAX_REPORT_REVISIONS + 1
+    # 보고서가 생성될 때마다 연결된 품질 노드도 한 번씩 실행된다.
+    assert final["node_runs"] == 20 + (MAX_REPORT_REVISIONS + 1) * len(graph_module.QUALITY_NODES)
+    assert final["node_runs"] <= MAX_NODE_RUNS == 30

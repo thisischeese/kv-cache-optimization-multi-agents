@@ -13,8 +13,8 @@ Design rules:
 - `plan` is stored in State so a resume continues the saved plan instead of
   asking the LLM for a new one.
 
-Migration: `*_eval`, `recheck_targets` and `recheck_count` stay until the
-orchestrator-worker switch moves their readers to `results` and `plan`.
+관점 Agent의 반환 키는 worker 내부에서만 사용하고 상위 결과는 results에 저장한다.
+재실행은 plan.round와 Task.attempt로 제어한다.
 """
 
 import operator
@@ -96,17 +96,9 @@ class MainState(TypedDict, total=False):
 
     # ── 작업 결과 ──────────────────────────────────────────
     tech_profiles: Annotated[dict[str, TechProfile], merge_by_key]   # tech_id 키
-    results: Annotated[dict[str, PerspectiveResult], merge_by_key]   # task_id 키
+    results: Annotated[dict[str, PerspectiveResult | TRLResult], merge_by_key]   # task_id 키
     synthesis: Synthesis
     report_md: str
-
-    # 이전 계약. orchestrator-worker 전환 후 `results`로 대체
-    # TODO[1-우진] synthesis·report·references·evidence_check·app.py가 모두 `results`를 읽게 바꾼 뒤
-    #   아래 네 필드를 지운다. 관련 테스트(test_graph, test_evidence_check 등)도 함께 고친다.
-    trl_eval: TRLResult
-    market_eval: PerspectiveResult
-    stakeholder_eval: PerspectiveResult
-    domain_eval: PerspectiveResult
 
     # ── 게이트 판정 (다음 노드가 읽는 사유) ────────────────
     evidence_check: dict[str, CheckResult]
@@ -117,16 +109,9 @@ class MainState(TypedDict, total=False):
     # report_issues는 review 게이트가 이 값을 모아 혼자 쓰는 필드로 유지한다.
     quality_checks: Annotated[dict[str, QualityVerdict], merge_by_key]   # criterion 키
 
-    # 이전 계약. 전환 후 다음 라운드 `plan.tasks`로 대체
-    # TODO[1-우진] 전환 뒤 recheck_targets와 아래 recheck_count를 지운다. setup_node의 초기값도 함께 정리한다.
-    recheck_targets: list[str]
-
     # ── 종료 보장 ──────────────────────────────────────────
     report_revision: int
     node_runs: Annotated[int, operator.add]                          # 노드 실행마다 +1
-
-    # 이전 계약. 전환 후 `Task.attempt` + `plan.round`로 대체
-    recheck_count: dict[str, int]
 
     # ── 재개·복구 ──────────────────────────────────────────
     node_status: Annotated[dict[str, NodeStatus], merge_by_key]      # 고정 노드용, 노드 이름 키

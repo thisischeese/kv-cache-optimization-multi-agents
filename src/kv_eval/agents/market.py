@@ -10,7 +10,7 @@ from kv_eval.agents.market_queries import (
     MARKET_CRITERIA,
     build_market_web_queries,
 )
-from kv_eval.config import llm_enabled, perplexity_api_key
+from kv_eval.config import TECH_IDS, llm_enabled, perplexity_api_key
 from kv_eval.schemas import Evidence, PerspectiveResult
 from kv_eval.state import MainState
 from kv_eval.tools import WebEvidence, perplexity_search, search_web
@@ -138,13 +138,15 @@ def _fallback_market_summary(
 
 
 def _collect_market_evidence(
-    tech_name: str,
+    tech_name: str, *, focus: list[str] | None = None,
 ) -> list[tuple[str, WebEvidence]]:
-    """시장성 기준별 웹 근거를 수집한다."""
+    """기존 시장성 검색 기준에 보완 사유를 더해 웹 근거를 수집한다."""
 
     collected: list[tuple[str, WebEvidence]] = []
 
     for query in build_market_web_queries(tech_name):
+        if focus:
+            query = {**query, "query": query["query"] + " " + "; ".join(focus)}
         results = search_web(
             query=query["query"],
             domains=query["domains"],
@@ -194,21 +196,28 @@ def _web_to_evidence(
     )
 
 
-def market_agent(state: MainState) -> MainState:
+def market_agent(state: MainState) -> dict[str, PerspectiveResult]:
     """공개 웹 자료를 기반으로 시장성 평가 근거를 수집한다."""
 
     evidence: list[Evidence] = []
     tech_results: dict[str, str] = {}
 
     web_enabled = bool(perplexity_api_key())
+    check = state.get("evidence_check", {}).get("market")
+    missing = check.missing if check is not None else []
 
     for tech in state.get("targets", []):
+        # 기술별 지시와 전체 공통 지시만 해당 기술의 검색에 반영한다.
+        focus = [item.strip() for item in missing if item.strip() and (
+            item.partition(":")[0].strip() not in TECH_IDS
+            or item.partition(":")[0].strip() == tech.tech_id
+        )]
         tech_evidence: list[Evidence] = []
 
         market_items: list[tuple[str, WebEvidence]] = []
 
         if web_enabled:
-            market_items = _collect_market_evidence(tech.name)
+            market_items = _collect_market_evidence(tech.name, focus=focus)
 
         tech_evidence = [
             _web_to_evidence(

@@ -20,8 +20,8 @@ def test_llm_output_is_filtered_by_code(monkeypatch) -> None:
     offline = graph.invoke({})
     real_id = next(
         e.evidence_id
-        for key in ("trl_eval", "market_eval", "stakeholder_eval", "domain_eval")
-        for e in offline[key].evidence
+        for result in offline["results"].values()
+        for e in result.evidence
     )
     fake = synth._LLMSynthesis(
         matrix_summary="요약",

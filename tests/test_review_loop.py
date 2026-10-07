@@ -90,11 +90,11 @@ def test_missing_report_is_flagged() -> None:
 
 
 def test_reference_lists_only_cited_sources_with_code_formatting() -> None:
-    state = {"market_eval": PerspectiveResult(perspective="market", evidence=[
+    state = {"results": {"market": PerspectiveResult(perspective="market", evidence=[
         Evidence(evidence_id="w1", claim="c", source_id="W01", title="vLLM FP8 KV cache",
                  url="https://docs.vllm.ai/x", site="vLLM Docs", published_date="2026-05-01"),
         Evidence(evidence_id="w2", claim="c", source_id="W02", title="not cited", url="https://u"),
-    ])}
+    ])}}
     refs = build_references("본문 [kivi p.4] 와 [W01]", state)
     assert refs[0].startswith("[kivi] Zirui Liu et al.(2024). KIVI")
     assert "arXiv:2402.02750" in refs[0]

@@ -649,7 +649,7 @@ def _recheck_missing(state: MainState) -> list[str]:
     return list(getattr(check, "missing", None) or [])
 
 
-def domain_agent(state: MainState) -> MainState:
+def domain_agent(state: MainState) -> dict[str, DomainEvaluation]:
     """LangGraph node. Offline (no key or KV_EVAL_OFFLINE=1) it returns [MOCK] data."""
 
     if not _llm_enabled():
