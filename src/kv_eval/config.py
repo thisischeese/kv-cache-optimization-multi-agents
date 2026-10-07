@@ -86,16 +86,20 @@ MAX_REPORT_REVISIONS = 1
 #   BANNED_EXPRESSIONS / ALLOWED_NEGATIONS는 위에 있다. neutrality 노드가 이어받는다.
 # TODO[4-선우] MAX_SINGLE_SOURCE_SHARE (예: 0.5), MIN_DISTINCT_SOURCES_PER_TECH (예: 2),
 #   MIN_SOURCE_TYPES_PER_TECH (예: 2). 임계값을 바꾸면 BIAS_MEASURES 문구도 함께 맞춘다.
-# TODO[5-진호] 커버리지 임계값이 필요하면 여기에 둔다(예: MIN_CITATIONS_PER_PERSPECTIVE = 1).
+# 관점 커버리지: 관점 절마다 있어야 하는 본문 인용 수(nodes/coverage.py)
+MIN_CITATIONS_PER_PERSPECTIVE = 1
 
 # --- orchestrator-worker / run control ---
 MAX_PLAN_ROUNDS = 2        # round 1 + one re-plan (same budget as the old recheck)
 MAX_TASK_ATTEMPTS = 2
 MAX_TASKS_PER_ROUND = 8    # caps an LLM plan that inflates the task list
-# Normal path runs at most 18 nodes; past this, routers force the run to finish.
-# TODO[1-우진·5-진호] orchestrator/worker와 품질 평가 노드를 추가하면 최대 실행 수를 다시 계산하고
-#   이 상한을 조정한다(평가 노드 3개 x 보고서 라운드 수 + 재계획 라운드).
-MAX_NODE_RUNS = 30
+# Longest normal path, with the 3 quality nodes (coverage, neutrality, bias_control):
+#   setup 1 + tech_research 2 + [orchestrator 1 + worker 4 + evidence_check 1] x 2 rounds
+#   + [synthesis 1 + report 1 + quality 3 + review 1] x 2 (before / after the quality re-plan)
+#   + rewrite [report 1 + quality 3 + review 1] = 32
+# (offline worst path with coverage only measured 26 = 32 - 2 x 3). Past this,
+# routers force the run to finish, so keep a small margin above 32.
+MAX_NODE_RUNS = 36
 GRAPH_RECURSION_LIMIT = 40  # last-resort guard passed in the invoke config
 
 # --- PDF ---
