@@ -17,6 +17,8 @@ from kv_eval.state import MainState
 CITATION = re.compile(r"\[([A-Za-z0-9_\-]+)(?:\s+p\.\s?\d+)?\]")
 # Bracketed labels that are not citations (e.g. the "[MOCK]" data marker).
 RESERVED_LABELS = frozenset({"MOCK"})
+# TODO[1-우진] all_evidence가 state["results"].values()의 evidence를 모으게 바꾸고 이 튜플을 지운다.
+#   report, review, synthesis와 4번 bias_control이 이 함수를 쓰므로 반환 형식은 그대로 둔다.
 _PERSPECTIVE_KEYS = ("trl_eval", "market_eval", "stakeholder_eval", "domain_eval")
 
 

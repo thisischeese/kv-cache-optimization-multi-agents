@@ -21,6 +21,26 @@ from kv_eval.references import cited_ids, known_citation_ids
 from kv_eval.state import MainState
 
 _TOP_HEADING = re.compile(r"^# (.+)$", re.MULTILINE)
+
+# TODO[5-진호] review를 보고서 품질 게이트로 확장한다(요구사항 D: 평가 결과가 미달이면 Loop).
+#   - 흐름: report -> neutrality / bias_control / coverage (병렬) -> review -> retry | replan | done
+#   - review_node는 형식 검사(SUMMARY·REFERENCE 위치, SUMMARY 길이, TRL 문구, 인용 ID 실재)를 유지한다.
+#     그리고 state["quality_checks"]의 QualityVerdict를 모아 report_issues 하나로 합친다(혼자 쓰는 필드).
+#   - 금지 표현 검사는 neutrality.py로 옮긴다. 아래 find_issues에서 지우는 일은 3번 승민과 같은 PR에서 한다.
+#   - route_after_review
+#       재작성으로 고칠 수 있는 이슈 -> "retry" (report_revision <= MAX_REPORT_REVISIONS일 때)
+#       "근거 부족:" 이슈(bias_control, coverage) -> 전환 뒤에는 "replan"(orchestrator, plan.round 상한 공유).
+#                                            전환 전에는 한계점에 기록하고 "done"
+#       node_runs >= MAX_NODE_RUNS -> "done" (log_event "budget_exhausted")
+#   - 결정 로그: 매번 log_event(state.get("run_id"), "review", <retry|replan|done>,
+#       reason=<미달 항목 요약>, failed=[criterion...]) 한 줄을 남긴다.
+#   - 재평가할 때 이전 라운드의 quality_checks가 남아 있다. 평가 노드가 매번 자기 키를 덮어쓰므로
+#     게이트는 현재 값만 보면 된다.
+#
+# TODO[담당 미정] Groundedness (요구사항 D 최소 평가 항목, 역할 분담에 없음 -> 팀 논의 필요)
+#   - 지금은 아래 find_issues의 "인용 ID 실재" 검사(1안, 형식)만 있다.
+#   - 2안: 본문 문장과 그 문장이 인용한 근거의 quote를 LLM Judge로 대조해 뒷받침 여부를 판정한다.
+#   - 구현한다면 nodes/groundedness.py로 분리하고, 같은 QualityVerdict 계약(criterion="groundedness")을 쓴다.
 _ENGLISH_WORD = re.compile(r"\b[A-Za-z][A-Za-z-]{2,}\b")
 _HANGUL = re.compile(r"[가-힣]")
 

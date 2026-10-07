@@ -23,6 +23,12 @@ from kv_eval.references import all_evidence
 from kv_eval.schemas import CheckResult, Conflict, MatrixCell, Synthesis
 from kv_eval.state import MainState
 
+# TODO[1-우진] 요구사항 B: synthesizer 노드가 Workers 결과를 집계한다.
+#   - 아래 _KEYS 대신 state["results"]를 읽는다. 1차 단위에서는 task_id = 관점 이름이다.
+#     관점×기술로 쪼개면 results를 관점별로 묶는 헬퍼가 필요하다.
+#   - _LABEL은 config.PERSPECTIVE_LABELS로 바꾼다.
+#   - task_status가 "failed"이거나 계획에서 제외된 작업은 결과 없음으로 보고 limitations에 사유를 넣는다
+#     (Fall-back 결과가 보고서에 드러나야 한다).
 _KEYS = {"trl": "trl_eval", "market": "market_eval", "stakeholder": "stakeholder_eval", "domain": "domain_eval"}
 _LABEL = {"trl": "TRL", "market": "시장성", "stakeholder": "이해관계자", "domain": "도메인"}
 

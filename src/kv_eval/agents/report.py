@@ -161,6 +161,12 @@ def _has_banned(sentence: str) -> bool:
     return any(word in cleaned for word in BANNED_EXPRESSIONS)
 
 
+# TODO[3-승민·4-선우·5-진호] 품질 평가 Loop의 수정 단계
+#   - 지금 _revise는 금지 표현 문장과 해석되지 않는 인용만 지운다.
+#   - state["quality_checks"]의 각 QualityVerdict.targets(문장 원문)를 받아 해당 문장을 지우거나
+#     중립 문장으로 바꾼다. 문장 매칭은 원문 그대로 한다(LLM이 바꿔 쓴 문장은 매칭하지 않음).
+#   - "근거 부족:" 이슈는 여기서 고칠 수 없다. _limitations에 그대로 추가한다.
+#   - 수정 규칙은 각 평가 담당이 자기 criterion 몫을 추가하고, 함수 구조는 5번 진호가 정한다.
 def _revise(body: str, state: MainState) -> str:
     known = known_citation_ids(state) | RESERVED_LABELS
     body = CITATION.sub(lambda m: m.group(0) if m.group(1) in known else "", body)
@@ -174,6 +180,9 @@ def _revise(body: str, state: MainState) -> str:
     return "\n".join(lines)
 
 
+# TODO[1-우진] 관점 결과를 state["results"]에서 읽는다. 아래의 state.get("trl_eval") 등 4곳과 _matrix의 키 목록을 바꾼다.
+#   계획에서 빠졌거나 실패한 작업(task_status)은 해당 절에 "(결과 없음)"으로 남기고 6장 한계점에 사유를 적는다.
+#   커버리지 평가(5번)가 이 표기를 기준으로 판정한다.
 def report_agent(state: MainState) -> MainState:
     targets: list[Tech] = state.get("targets", [])
     domain: DomainSpec | None = state.get("domain")

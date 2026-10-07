@@ -7,6 +7,7 @@ authors = [
     { name = "thisischeese", email = "iamclwm@gmail.com" }
 ]
 requires-python = ">=3.11"
+# TODO[2-승은] 체크포인터 의존성 "langgraph-checkpoint-sqlite"를 추가한다(uv add langgraph-checkpoint-sqlite).
 dependencies = [
     "langchain>=1.4.2",
     "langchain-openai>=1.6.2",

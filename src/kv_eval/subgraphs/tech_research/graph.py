@@ -42,6 +42,11 @@ from kv_eval.subgraphs.tech_research.state import (
 )
 
 
+# TODO[2-승은] 메인 그래프에 체크포인터를 붙이면, 노드 안에서 호출되는 이 서브그래프들도 기본으로
+#   체크포인터를 물려받는다. 그러면 ItemState.chunks(검색 원문, 청크당 최대 4000자)가 superstep마다 저장된다.
+#   아래 세 builder.compile()을 builder.compile(checkpointer=False)로 바꾼다(요구사항 C. 지속성 비용).
+#   재개 단위는 tech_research 노드 전체다. 서브그래프 도중에 중단되면 그 기술을 처음부터 다시 조사한다.
+#   담당 이승민과 합의 후 수정한다.
 def build_item_graph(deps: TechResearchDeps) -> CompiledStateGraph:
     builder = StateGraph(ItemState, input_schema=ItemInput, output_schema=ItemOutput)
 

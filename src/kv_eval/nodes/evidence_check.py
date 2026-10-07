@@ -28,6 +28,17 @@ from kv_eval.references import cited_ids
 from kv_eval.schemas import CheckResult, Evidence, PerspectiveResult, TRLResult
 from kv_eval.state import MainState
 
+# TODO[1-우진] 오케스트레이터 전환에 맞춰 evidence_check를 "판정만 하는" 게이트로 바꾼다.
+#   - 판정 대상: state["plan"].tasks의 task_id마다 state["results"][task_id]. 키는 task_id로 쓴다.
+#     아래 STATE_KEY_BY_PERSPECTIVE 매핑은 지운다.
+#   - task_status[task_id] == "failed"이면 missing=["실행 실패: <task_errors[task_id].type>"]로 둔다
+#     (재계획 대상). "mock"이면 "미평가"로 통과시킨다. _is_annotated 추측은 status가 없을 때만 쓴다.
+#   - 재조사를 고르는 일(recheck_targets, recheck_count)은 orchestrator가 맡는다. 이 노드에서는 지운다.
+#   - route_after_evidence_check
+#       재계획할 작업이 있고 plan.round < MAX_PLAN_ROUNDS이고 node_runs < MAX_NODE_RUNS -> "orchestrator"
+#       그 밖의 경우 -> "synthesis"
+#     결정마다 log_event(state.get("run_id"), "evidence_check", <orchestrator|synthesis>,
+#       reason=<task_id별 missing 요약>)을 남긴다.
 STATE_KEY_BY_PERSPECTIVE: dict[str, str] = {
     "trl": "trl_eval",
     "market": "market_eval",
