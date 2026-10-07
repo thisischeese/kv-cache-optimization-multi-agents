@@ -141,3 +141,48 @@ class Synthesis(BaseModel):
     conflicts: list[Conflict] = Field(default_factory=list)
     implications: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
+
+
+# ---- Orchestrator-Worker plan and run control ----
+
+WorkerKind = Literal["trl", "market", "stakeholder", "domain"]
+NodeStatus = Literal["ok", "mock", "degraded", "failed"]
+TaskStatus = Literal["pending", "ok", "mock", "degraded", "failed"]
+
+NODE_ERROR_MESSAGE_MAX_CHARS = 300
+
+
+class NodeError(BaseModel):
+    """Last error of one node or task. The full traceback goes to the external
+    log (outputs/runs/{run_id}/), not into State."""
+
+    type: str                  # exception class name
+    message: str
+    attempt: int = 1
+    retryable: bool = False
+
+    @field_validator("message", mode="before")
+    @classmethod
+    def _truncate_message(cls, v):
+        return v[:NODE_ERROR_MESSAGE_MAX_CHARS] if isinstance(v, str) else v
+
+
+class Task(BaseModel):
+    """One unit of work the orchestrator hands to a worker."""
+
+    # Stable across plan rounds: a re-planned task overwrites its own result
+    # under the same key. Never append the attempt number to it.
+    task_id: str               # 1차: perspective name ("market"). 확장 시 "market:kivi"
+    kind: WorkerKind
+    tech_ids: list[str] = Field(default_factory=list)
+    focus: list[str] = Field(default_factory=list)  # 보완 지시. 재계획 때 evidence_check.missing
+    attempt: int = Field(default=1, ge=1)
+
+
+class Plan(BaseModel):
+    """Tasks for the current round only. Replaced whole on every re-plan;
+    earlier rounds go to the external decision log."""
+
+    round: int = Field(default=1, ge=1)
+    source: Literal["llm", "rule"]
+    tasks: list[Task] = Field(default_factory=list)

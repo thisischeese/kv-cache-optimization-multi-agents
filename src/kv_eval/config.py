@@ -9,9 +9,13 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
 REPORT_PATH = OUTPUT_DIR / "report.md"
+RUNS_DIR = OUTPUT_DIR / "runs"  # per-run artifacts and logs: RUNS_DIR / run_id
 
 TECH_IDS: tuple[str, str] = ("kivi", "infinigen")
 PERSPECTIVES: tuple[str, ...] = ("trl", "market", "stakeholder", "domain")
+PERSPECTIVE_LABELS: dict[str, str] = {
+    "trl": "TRL", "market": "시장성", "stakeholder": "이해관계자", "domain": "도메인",
+}
 
 DEFAULT_EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 DEFAULT_EMBEDDING_DEVICE = "cpu"
@@ -75,6 +79,14 @@ TRL_ESTIMATE_PHRASE = "공개 정보 기반 추정"
 BANNED_EXPRESSIONS: tuple[str, ...] = ("우수", "열등", "승자", "더 낫", "추천")
 ALLOWED_NEGATIONS: tuple[str, ...] = ("추천하지 않", "추천을 하지 않", "우열을 가리지 않")
 MAX_REPORT_REVISIONS = 1
+
+# --- orchestrator-worker / run control ---
+MAX_PLAN_ROUNDS = 2        # round 1 + one re-plan (same budget as the old recheck)
+MAX_TASK_ATTEMPTS = 2
+MAX_TASKS_PER_ROUND = 8    # caps an LLM plan that inflates the task list
+# Normal path runs at most 18 nodes; past this, routers force the run to finish.
+MAX_NODE_RUNS = 30
+GRAPH_RECURSION_LIMIT = 40  # last-resort guard passed in the invoke config
 
 # --- PDF ---
 # Korean-capable TTF candidates per OS. Override with PDF_FONT_PATH in .env.
