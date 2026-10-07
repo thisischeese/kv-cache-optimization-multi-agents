@@ -64,3 +64,41 @@ def test_parallel_task_writes_merge_by_task_id() -> None:
     assert state["task_status"]["market"] == "ok"
     assert state["task_errors"]["market"] is None
     assert state["node_runs"] == 5  # orchestrator + 4 workers
+
+
+def test_quality_verdict_rejects_unknown_criterion_and_splits_evidence_gaps() -> None:
+    from kv_eval.schemas import EVIDENCE_GAP_PREFIX, QualityVerdict
+
+    with pytest.raises(ValidationError):
+        QualityVerdict(criterion="style", passed=True, method="rule")
+    verdict = QualityVerdict(
+        criterion="coverage", passed=False, method="rule",
+        issues=[f"{EVIDENCE_GAP_PREFIX} 시장성 절 비어 있음", "도메인 절에 TTFT 서술 누락"],
+    )
+    assert verdict.evidence_gaps == [f"{EVIDENCE_GAP_PREFIX} 시장성 절 비어 있음"]
+
+
+def test_parallel_quality_checks_merge_by_criterion() -> None:
+    """report 뒤 평가 노드 3개가 같은 superstep에 각자 자기 키만 쓴다."""
+    from kv_eval.schemas import QualityVerdict
+
+    def evaluator(criterion: str, passed: bool):
+        def node(state: MainState) -> MainState:
+            return {"quality_checks": {criterion: QualityVerdict(
+                criterion=criterion, passed=passed, method="rule")}}
+        return node
+
+    builder = StateGraph(MainState)
+    builder.add_node("report", lambda state: {"report_md": "# SUMMARY"})
+    for name, passed in (("neutrality", True), ("bias_control", False), ("coverage", True)):
+        builder.add_node(name, evaluator(name, passed))
+        builder.add_edge("report", name)
+        builder.add_edge(name, END)
+    builder.add_edge(START, "report")
+
+    checks = builder.compile().invoke(
+        {"quality_checks": {"coverage": QualityVerdict(criterion="coverage", passed=False, method="rule")}}
+    )["quality_checks"]
+    assert set(checks) == {"neutrality", "bias_control", "coverage"}
+    assert checks["coverage"].passed                 # 재평가는 자기 키만 덮어쓴다
+    assert not checks["bias_control"].passed
