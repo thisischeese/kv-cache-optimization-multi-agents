@@ -22,7 +22,7 @@ from kv_eval.nodes.setup import setup_node
 from kv_eval.nodes.worker import worker_node
 from kv_eval.state import MainState, TechResearchInput, WorkerInput
 
-# 외부 호출의 일시 오류는 RetryPolicy가 재시도한다. 소진 시에는 예외가 전파된다.
+# 외부 호출의 일시 오류는 RetryPolicy가 재시도한다. worker는 소진 시 실패를 기록하고 계속한다.
 # 그 외 외부 노드 실패는 래퍼가 기록하고, 규칙 노드의 오류는 그대로 전파한다.
 # 품질 평가 노드는 LLM Judge를 쓰므로 여기에 넣는다. Judge가 실패해도 보고서 생성은 멈추지 않는다(fail_soft).
 # TODO[3-승민·4-선우] neutrality / bias_control 노드를 QUALITY_NODES에 추가한다.
@@ -62,7 +62,10 @@ def _add_node(builder: StateGraph, name: str, fn) -> None:
     external = name in EXTERNAL_NODES
     builder.add_node(
         name,
-        instrumented(name, fn, fail_soft=external),
+        instrumented(
+            name, fn, fail_soft=external,
+            retry_limit=RETRY_POLICY.max_attempts if name == "worker" else None,
+        ),
         retry_policy=RETRY_POLICY if external else None,
     )
 
