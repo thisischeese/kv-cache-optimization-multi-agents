@@ -66,6 +66,9 @@ class _WebCheck(BaseModel):
 _CACHE_DIR = PROJECT_ROOT / ".cache" / "trl"
 _SEARCH_CACHE_VERSION = 2
 _PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "trl.md"
+# 보고서에 보이는 인용문 길이. LLM이 고른 인용이 표·청크 전체일 때가 있어
+# 근거 한 줄이 1,000자를 넘었다. 원문 전체는 Evidence.quote에 그대로 남긴다.
+_CLAIM_QUOTE_CHARS = 160
 
 
 def _write_json(path: Path, data: object) -> None:
@@ -635,6 +638,9 @@ def _evaluate(
             item = by_id[support.evidence_id]
             # 원문 논문의 [44] 같은 참고문헌 표시는 프로젝트 인용 ID와 구분한다.
             display = re.sub(r"\[(\d+(?:\s*[,–-]\s*\d+)*)\]", r"(원문 참고문헌 \1)", support.quote)
+            display = " ".join(display.split())
+            if len(display) > _CLAIM_QUOTE_CHARS:
+                display = display[:_CLAIM_QUOTE_CHARS].rstrip() + "…"
             previous = used.get(item.evidence_id)
             claim = f"TRL {stage.stage}: {stage.reason} 근거: {display}"
             used[item.evidence_id] = item.model_copy(update={
