@@ -11,13 +11,11 @@ import uuid
 from dotenv import load_dotenv
 
 from kv_eval.config import (
+    MAX_PLAN_ROUNDS,
     OUTPUT_DIR,
     PDF_PATH,
     PERSPECTIVES,
     REPORT_PATH,
-    TEAM_CAMPUS,
-    TEAM_CLASS,
-    TEAM_MEMBERS,
     embedding_model_name,
     llm_enabled,
     llm_model,
@@ -27,9 +25,10 @@ from kv_eval import checkpoint
 from kv_eval.graph import build_graph
 from kv_eval.instrument import is_retryable
 from kv_eval.observability import log_event, run_config, run_dir
-from kv_eval.pdf import markdown_to_pdf
+from kv_eval.pdf import MAX_REPORT_PAGES, markdown_to_pdf, report_pdf_options
 from kv_eval.results import get_result
 from kv_eval.state import MainState
+from kv_eval.schemas import Plan, Task
 
 
 def main() -> None:
@@ -44,12 +43,40 @@ def main() -> None:
     #              log_event(run_id, "app", "run_resume")
     #   - 재시도 대상 예외로 실행이 중단되면 재개 명령(uv run python app.py --resume <run_id>)을 안내하고 종료한다.
     parser = argparse.ArgumentParser(description="Run the KV cache evaluation graph once.")
-    parser.add_argument("--resume", metavar="RUN_ID", help="continue an interrupted run")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--resume", metavar="RUN_ID", help="continue an interrupted run")
+    mode.add_argument("--report-only", metavar="RUN_ID", help="reuse collected results and regenerate only the report and quality checks")
+    parser.add_argument("--repair-missing", action="store_true", help="with --report-only, rerun only perspectives without evidence")
     args = parser.parse_args()
+    if args.repair_missing and not args.report_only:
+        parser.error("--repair-missing은 --report-only RUN_ID와 함께 사용하세요.")
 
     with checkpoint.open_checkpointer() as saver:
         graph = build_graph(checkpointer=saver)
-        if args.resume:
+        if args.report_only:
+            source = graph.get_state(run_config(args.report_only))
+            if not source.values.get("report_md"):
+                raise ValueError("저장된 보고서 초안이 없습니다. 실행 ID를 확인하세요.")
+            run_id = str(uuid.uuid4())
+            # 별도 실행에 수집 결과를 복사한다. 계획을 비워 보고서 검토가 재조사로 돌아가지 않게 한다.
+            restored = {
+                **source.values, "run_id": run_id, "plan": None,
+                "node_runs": 0, "report_revision": 0,
+            }
+            tasks = []
+            if args.repair_missing:
+                tasks = [Task(task_id=p, kind=p,
+                              tech_ids=[t.tech_id for t in source.values.get("targets", [])])
+                         for p in PERSPECTIVES
+                         if get_result(source.values, p) is None or not get_result(source.values, p).evidence]
+                # 수동 복구에서 선택한 빈 관점만 한 번 실행하고 기존 정상 결과는 유지한다.
+                restored["plan"] = Plan(round=MAX_PLAN_ROUNDS, source="rule", tasks=tasks)
+            graph.update_state(run_config(run_id), restored,
+                               as_node="orchestrator" if tasks else "synthesis")
+            log_event(run_id, "app", "report_regenerate", source_run=args.report_only,
+                      repair_tasks=[task.task_id for task in tasks])
+            graph_input = None
+        elif args.resume:
             run_id = args.resume
             if not checkpoint.can_resume(graph, run_id):
                 print(f"Nothing to resume for run {run_id} (finished or unknown).")
@@ -76,16 +103,27 @@ def main() -> None:
 
     
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    # 제출 검사 실패 시에도 실행별 초안은 남기고 기존 제출 파일은 보존한다.
+    run_path = run_dir(run_id)
+    draft_path = run_path / "report.md"
+    draft_path.write_text(final_state["report_md"], encoding="utf-8")
+    try:
+        failures = [line for line in final_state["report_md"].splitlines()
+                    if line.startswith("제출용 한국어 정리 미완료:")]
+        if failures:
+            raise ValueError("; ".join(failures))
+        markdown_to_pdf(
+            final_state["report_md"], PDF_PATH,
+            max_pages=MAX_REPORT_PAGES, **report_pdf_options(),
+        )
+    except ValueError as exc:
+        log_event(run_id, "app", "output_blocked", str(exc), draft=str(draft_path))
+        previous = "기존 PDF는 이전 실행 결과이며 그대로 유지했습니다" if PDF_PATH.exists() else "새 PDF를 생성하지 않았습니다"
+        raise ValueError(
+            f"{exc}\n이번 실행의 공용 보고서는 갱신하지 않았습니다.\n"
+            f"{previous}: {PDF_PATH}\n최신 초안: {draft_path}"
+        ) from exc
     REPORT_PATH.write_text(final_state["report_md"], encoding="utf-8")
-    markdown_to_pdf(
-        final_state["report_md"],
-        PDF_PATH,
-        title="KV Cache 최적화 기술 다관점 평가 보고서",
-        subtitle=(
-            "KIVI(SW) vs InfiniGen(HW) · Cloud LLM Serving\n"
-            f"{TEAM_CAMPUS} {TEAM_CLASS} · {', '.join(TEAM_MEMBERS)}"
-        ),
-    )
     issues_path = OUTPUT_DIR / "report_issues.txt"
     issues = final_state.get("report_issues", [])
     if issues:
@@ -94,8 +132,6 @@ def main() -> None:
         issues_path.unlink()
 
     # Per-run copy next to the decision log; the paths above are overwritten each run.
-    run_path = run_dir(run_id)
-    (run_path / "report.md").write_text(final_state["report_md"], encoding="utf-8")
     if issues:
         (run_path / "report_issues.txt").write_text("\n".join(issues) + "\n", encoding="utf-8")
 

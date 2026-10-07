@@ -32,6 +32,7 @@ from kv_eval.config import (
     TRL_ESTIMATE_PHRASE,
 )
 from kv_eval.observability import log_event
+from kv_eval.pdf import MAX_REPORT_PAGES, report_page_count
 from kv_eval.references import cited_ids, known_citation_ids
 from kv_eval.schemas import EVIDENCE_GAP_PREFIX
 from kv_eval.state import MainState
@@ -110,6 +111,12 @@ def find_issues(report_md: str, state: MainState) -> list[str]:
 
     if _has_english_narrative(body):
         issues.append("보고서 서술 영어 잔존")
+    # 구체적인 검증 사유를 다음 보고서 작성의 피드백으로 전달한다.
+    issues.extend(line.strip() for line in report_md.splitlines()
+                  if line.strip().startswith("제출용 한국어 정리 미완료:"))
+    pages = report_page_count(report_md)
+    if pages > MAX_REPORT_PAGES:
+        issues.append(f"PDF 페이지 초과: {pages}쪽 (최대 {MAX_REPORT_PAGES}쪽, 목표 9쪽)")
     return issues
 
 

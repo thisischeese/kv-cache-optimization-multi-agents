@@ -173,8 +173,20 @@ uv run python scripts/compare_retrieval.py                 # collection 간 검�
 uv run python scripts/eval_retrieval.py                    # Recall@5 / MRR / page 단위 지표
 ```
 ## Results
+
+**검색 성능** (`scripts/eval_retrieval.py`)
+
 <img width="1371" height="91" alt="image" src="https://github.com/user-attachments/assets/b28fb303-86d1-4ec3-a68e-d12151a9260c" />
 
+**실제 실행 기록** (위 실행 예와 같은 실행)
+
+| 항목 | 값 |
+| --- | --- |
+| 계획 라운드 | 2 (1라운드 4작업 → 2라운드 미달 2작업) |
+| 노드 실행 수 | 24 (상한 30) |
+| 품질 평가 | 1차: 3항목 미달(이슈 10건) → 재작성 1회 → 중립성 통과, 남은 이슈 4건 기록 |
+| 실행 시간 | 약 6.5분 |
+| 보고서 분량 | 18쪽 |
 
 ## Contributors
 

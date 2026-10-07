@@ -81,7 +81,7 @@ SOURCES_PATH = PROJECT_ROOT / "data" / "papers" / "sources.json"
 # 제출 파일명: RAG-Output_{캠퍼스}_{X반}_{참여 인원 이름을 + 로 연결}.pdf
 TEAM_CAMPUS = "판교"
 TEAM_CLASS = "8반"
-TEAM_MEMBERS: tuple[str, ...] = ("최다은", "이승민", "전우진", "정선우", "이진호")  # 역할 분담 1~5번 순
+TEAM_MEMBERS: tuple[str, ...] = ("최다은", "이승민", "전우진", "정선우", "이진호", "이승은")
 PDF_PATH = OUTPUT_DIR / f"RAG-Output_{TEAM_CAMPUS}_{TEAM_CLASS}_{'+'.join(TEAM_MEMBERS)}.pdf"
 SUMMARY_MAX_CHARS = 800  # 약 A4 반 쪽
 TRL_ESTIMATE_PHRASE = "공개 정보 기반 추정"

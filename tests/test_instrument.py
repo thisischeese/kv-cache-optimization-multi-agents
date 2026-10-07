@@ -12,7 +12,7 @@ from langgraph.types import RetryPolicy
 
 import kv_eval.graph  # noqa: F401  (ensure the submodule is loaded)
 import kv_eval.observability as observability
-from kv_eval.config import GRAPH_RECURSION_LIMIT
+from kv_eval.config import GRAPH_RECURSION_LIMIT, MAX_TASK_ATTEMPTS
 from kv_eval.instrument import instrumented, is_retryable
 from kv_eval.schemas import NodeError, Task, Tech
 
@@ -206,3 +206,30 @@ def test_transient_error_is_retried_by_the_node_retry_policy(monkeypatch) -> Non
     assert calls["n"] == 2
     assert final["task_status"]["market"] == "ok"
     assert final["task_errors"]["market"] is None
+
+
+@pytest.mark.parametrize("error_type", [ConnectionError, TimeoutError])
+def test_exhausted_worker_retries_keep_report_running(monkeypatch, runs_dir, error_type):
+    calls = 0
+
+    def unavailable_market(state):
+        nonlocal calls
+        calls += 1
+        raise error_type("일시 오류가 계속 발생함")
+
+    policy = RetryPolicy(max_attempts=3, initial_interval=0.01, jitter=False, retry_on=is_retryable)
+    monkeypatch.setattr(graph_module, "market_agent", unavailable_market)
+    monkeypatch.setattr(graph_module, "RETRY_POLICY", policy)
+    final = graph_module.build_graph().invoke({"run_id": "worker-retry-exhausted"})
+
+    assert calls == policy.max_attempts * MAX_TASK_ATTEMPTS
+    assert final["task_status"]["market"] == "failed"
+    error = final["task_errors"]["market"]
+    assert error.type == error_type.__name__ and error.retryable
+    assert error.attempt == MAX_TASK_ATTEMPTS
+    assert set(final["results"]) == {"trl", "stakeholder", "domain"}
+    assert all(cell.perspective != "market" for cell in final["synthesis"].matrix)
+    assert f"실행 실패: {error_type.__name__}" in final["report_md"]
+    events = _events(runs_dir, "worker-retry-exhausted")
+    failed = [e for e in events if e["node"] == "market" and e["decision"] == "failed"]
+    assert len(failed) == MAX_TASK_ATTEMPTS and all(e["retry_exhausted"] for e in failed)

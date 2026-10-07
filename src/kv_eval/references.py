@@ -73,6 +73,25 @@ def _format_web(e: Evidence) -> str:
     return f"{site}({date}). {e.title or '제목 미상'}. {site}, {e.url or ''}"
 
 
+def normalize_citations(body: str, state: MainState) -> str:
+    """근거 ID 인용을 실제 출처와 페이지로 연결한다. 원본 ID는 바꾸지 않는다."""
+    evidence = {e.evidence_id: e for e in all_evidence(state)}
+    sources = set(load_sources()) | {e.source_id for e in evidence.values()}
+    def canonical(match: re.Match) -> str:
+        key, page_text = match.group(1), match.group(2)
+        page = int(page_text) if page_text is not None else None
+        if key in evidence and key not in sources:
+            item = evidence[key]
+            # 명시한 페이지가 다르면 원문 페이지로 몰래 바꾸지 않는다.
+            if page is None or page == item.page:
+                return cite(item)
+        return f"[{key} p.{page}]" if page is not None else f"[{key}]"
+
+    # 의미가 같은 공백 표기를 통일한 뒤 보고서와 검증에서 함께 사용한다.
+    pattern = r"\[\s*([A-Za-z0-9_\-]+)(?:\s+p\.\s*(\d+))?\s*\]"
+    return re.sub(pattern, canonical, body)
+
+
 def build_references(body_md: str, state: MainState) -> list[str]:
     sources = load_sources()
     by_source: dict[str, Evidence] = {}
@@ -80,7 +99,7 @@ def build_references(body_md: str, state: MainState) -> list[str]:
         by_source.setdefault(e.source_id, e)
 
     lines: list[str] = []
-    for source_id in cited_ids(body_md):
+    for source_id in cited_ids(normalize_citations(body_md, state)):
         if source_id in sources:
             lines.append(f"[{source_id}] {_format_paper(sources[source_id])}")
         elif source_id in by_source and (by_source[source_id].url or by_source[source_id].title):
