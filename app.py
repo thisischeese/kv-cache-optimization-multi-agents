@@ -1,5 +1,11 @@
 """Entrypoint: run the graph once, then save report.md, report.pdf and any
-unresolved review issues."""
+unresolved review issues.
+
+Each run gets a run_id that joins State, the decision log
+(outputs/runs/{run_id}/decisions.jsonl) and the LangSmith trace.
+"""
+
+import uuid
 
 from dotenv import load_dotenv
 
@@ -17,6 +23,7 @@ from kv_eval.config import (
     openai_api_key,
 )
 from kv_eval.graph import graph
+from kv_eval.observability import log_event, run_config, run_dir
 from kv_eval.pdf import markdown_to_pdf
 from kv_eval.state import MainState
 
@@ -31,7 +38,9 @@ _STATE_KEY_BY_PERSPECTIVE: dict[str, str] = {
 def main() -> None:
     load_dotenv()
 
-    final_state: MainState = graph.invoke({})
+    run_id = str(uuid.uuid4())
+    log_event(run_id, "app", "run_start")
+    final_state: MainState = graph.invoke({"run_id": run_id}, run_config(run_id))
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(final_state["report_md"], encoding="utf-8")
@@ -51,7 +60,22 @@ def main() -> None:
     elif issues_path.exists():
         issues_path.unlink()
 
+    # Per-run copy next to the decision log; the paths above are overwritten each run.
+    run_path = run_dir(run_id)
+    (run_path / "report.md").write_text(final_state["report_md"], encoding="utf-8")
+    if issues:
+        (run_path / "report_issues.txt").write_text("\n".join(issues) + "\n", encoding="utf-8")
+
+    node_status = final_state.get("node_status", {})
+    not_ok = {node: status for node, status in node_status.items() if status != "ok"}
+    log_event(
+        run_id, "app", "run_end",
+        node_runs=final_state.get("node_runs", 0), not_ok=not_ok, report_issues=len(issues),
+    )
+
     print("Graph execution completed.")
+    print(f"Run ID: {run_id}")
+    print(f"Decision log: {(run_path / 'decisions.jsonl').relative_to(OUTPUT_DIR.parent)}")
     print(f"OPENAI_API_KEY: {'loaded' if openai_api_key() else 'not set'}")
     print(f"Embedding model: {embedding_model_name()}")
     print(f"LLM (synthesis): {llm_model() if llm_enabled() else 'off (fallback)'}")
@@ -63,6 +87,16 @@ def main() -> None:
         label = perspective.capitalize() if perspective != "trl" else "TRL"
         present = final_state.get(_STATE_KEY_BY_PERSPECTIVE[perspective]) is not None
         print(f"- {label}: {'OK' if present else 'MISSING'}")
+
+    print()
+    print(f"Node runs: {final_state.get('node_runs', 0)}")
+    if not_ok:
+        print("Nodes not ok:")
+        for node, status in not_ok.items():
+            error = final_state.get("errors", {}).get(node)
+            print(f"- {node}: {status}" + (f" ({error.type}: {error.message})" if error else ""))
+    else:
+        print("All nodes ok.")
 
     if issues:
         print()

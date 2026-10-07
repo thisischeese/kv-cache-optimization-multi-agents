@@ -13,15 +13,30 @@ only and nothing is written to disk.
 import json
 import logging
 import threading
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from kv_eval.config import RUNS_DIR
+from langchain_core.runnables import RunnableConfig
+
+from kv_eval.config import GRAPH_RECURSION_LIMIT, RUNS_DIR
 
 logger = logging.getLogger("kv_eval.decisions")
 
 # Parallel branches (Send, fan-out) run in threads and append to one file.
 _write_lock = threading.Lock()
+
+
+def run_config(run_id: str) -> RunnableConfig:
+    """Invoke config for one run. The same run_id is the LangSmith root run id
+    (it must be a UUID) and its metadata, so a trace and the decision log can
+    be found from each other."""
+    return {
+        "run_id": uuid.UUID(run_id),
+        "run_name": "kv_eval",
+        "metadata": {"run_id": run_id},
+        "recursion_limit": GRAPH_RECURSION_LIMIT,
+    }
 
 
 def run_dir(run_id: str) -> Path:

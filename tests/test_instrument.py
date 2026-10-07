@@ -5,12 +5,14 @@ Offline: agents are the mock/offline paths or local stubs, no LLM or network.
 
 import json
 import sys
+import uuid
 
 import pytest
 from langgraph.types import RetryPolicy
 
 import kv_eval.graph  # noqa: F401  (ensure the submodule is loaded)
 import kv_eval.observability as observability
+from kv_eval.config import GRAPH_RECURSION_LIMIT
 from kv_eval.instrument import instrumented, is_retryable
 from kv_eval.schemas import NodeError, Task, Tech
 
@@ -127,6 +129,14 @@ def test_log_event_writes_jsonl_only_with_run_id(runs_dir) -> None:
     assert event["node"] == "evidence_check"
     assert event["reason"] == "market: 근거 1건"
     assert event["targets"] == ["market"]
+
+
+def test_run_config_joins_run_id_to_trace_and_sets_recursion_limit() -> None:
+    run_id = str(uuid.uuid4())
+    config = observability.run_config(run_id)
+    assert config["run_id"] == uuid.UUID(run_id)        # LangSmith root run id
+    assert config["metadata"] == {"run_id": run_id}     # searchable in LangSmith
+    assert config["recursion_limit"] == GRAPH_RECURSION_LIMIT
 
 
 @pytest.mark.parametrize("bad", ["", "..", "a/b", "../x"])
