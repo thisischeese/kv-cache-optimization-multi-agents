@@ -16,9 +16,16 @@ TODO: an LLM writing pass for SUMMARY once synthesis is real.
 import re
 
 from kv_eval.config import (
+    MAX_SINGLE_SOURCE_SHARE,
+    MIN_CRITICAL_PER_TECH,
+    MIN_DISTINCT_SOURCES_PER_TECH,
+    MIN_INDEPENDENT_PER_TECH,
+    MIN_SOURCE_TYPES_PER_TECH,
+    SELF_REPORT_LABEL,
     SUMMARY_MAX_CHARS,
     TRL_ESTIMATE_PHRASE,
 )
+from kv_eval.nodes.bias_control import apply_bias_revisions
 from kv_eval.references import (
     CITATION,
     RESERVED_LABELS,
@@ -45,6 +52,14 @@ BIAS_MEASURES: tuple[str, ...] = (
     "원 논문과 저자 본인 자료는 독립 출처로 세지 않음",
     "근거의 논조는 근거 점검 기준을 모르는 별도 Judge가 판정함",
     "관점 Agent끼리 결과를 공유하지 않는 병렬 구조로 평가함",
+    # Built from the bias_control thresholds so the text matches what is checked.
+    (
+        "보고서 생성 뒤 편향 통제 평가가 기술별 인용 근거를 점검함: "
+        f"출처 {MIN_DISTINCT_SOURCES_PER_TECH}곳·유형 {MIN_SOURCE_TYPES_PER_TECH}종 이상, "
+        f"한 출처 비율 {MAX_SINGLE_SOURCE_SHARE:.0%} 이하, "
+        f"독립 출처 {MIN_INDEPENDENT_PER_TECH}건·비판 근거 {MIN_CRITICAL_PER_TECH}건 이상, "
+        f"원 논문 수치의 '{SELF_REPORT_LABEL}' 표기, 관점 간 엇갈리는 평가의 명시"
+    ),
     "관점마다 독립 출처와 비판 근거가 부족하면 해당 관점만 1회 재조사함",
     "두 기술 사이에 순위를 매기거나 추천하지 않음",
 )
@@ -169,8 +184,8 @@ def _limitations(
 #   금지어 문장도 neutrality가 targets로 넘긴다. 여기서 따로 금지어를 찾지 않는 것은
 #   neutrality가 일부러 건너뛰는 원문 근거 블록까지 지우지 않기 위해서다.
 #   targets는 인용이 붙은 원문 그대로라, 모르는 인용을 지우기 전에 먼저 적용한다.
-# TODO[4-선우] 지우는 대신 중립 문장으로 바꿔야 하는 경우는 자기 criterion 몫을
-#   _rewrite_target에 추가한다(지금은 지우기만 한다).
+#   편향 통제(bias_control)의 지우지 않고 고치는 몫(빠진 근거 되살리기, 자체 보고 라벨, 관점 간 상충
+#   보충)은 nodes/bias_control.apply_bias_revisions가 _revise 맨 앞에서 처리한다.
 def _quality_targets(state: MainState) -> list[str]:
     return [t for v in (state.get("quality_checks") or {}).values() if not v.passed for t in v.targets if t.strip()]
 
@@ -189,6 +204,8 @@ def _rewrite_table_row(line: str) -> str:
 
 
 def _revise(body: str, state: MainState) -> str:
+    # 4-선우 bias_control: runs first, while the body still matches the evaluated text verbatim.
+    body = apply_bias_revisions(body, state)
     targets = _quality_targets(state)
     lines = []
     for line in body.split("\n"):
