@@ -27,7 +27,7 @@
 - **Agentic RAG** — 기술별 Send 병렬 실행, 항목마다 `질의 생성 → 검색 → 관련성 판정 → (추출 | 질의 재작성 후 재시도)` 루프
 - **관점 독립 병렬 평가** — 4개 관점 Agent가 서로의 결과를 읽지 않고 독립 실행, 각자 다른 State 키에만 write
 - **근거 점검과 제한적 재조사** — 근거 수·독립 출처·비판 근거를 점검하고, 부족한 관점만 최대 1회 재실행
-- **보고서 검수와 제한적 수정** — 필수 장·인용 ID 실재·금지 표현을 검사하고 최대 1회 수정
+- **보고서 검수와 제한적 수정**: 필수 장과 인용 ID 실재를 검사하고 최대 1회 수정 (우열이나 추천 표현은 중립성 노드가 검사)
 - **자동 REFERENCE 생성** — 본문에서 실제 인용된 근거 ID만 코드가 수집해 생성
 - **Markdown + PDF 출력** — `app.py` 한 번으로 Graph 실행부터 PDF 저장까지 연결
 
@@ -54,7 +54,7 @@
 | `evidence_check` | 근거 수·독립 출처·비판 근거 점검, 부족한 관점 선별 (Node) | `evidence_check`, `recheck_targets` |
 | `synthesis` | 관점 간 일치·상충·시사점·한계 정리 (LLM structured output) | `synthesis` |
 | `report` | 설계 목차에 맞춘 Markdown 보고서 조립, REFERENCE 생성 | `report_md` |
-| `review` | 필수 장·인용 ID·금지 표현 검수 (Node) | `report_issues` |
+| `review` | 필수 장과 인용 ID 검수, 품질 평가 결과 취합 (Node) | `report_issues` |
 
 관점 Agent 4개는 서로의 결과를 입력으로 받지 않는다. 해석 차이와 사실 불일치 구분은 `synthesis`에서만 한다.
 
