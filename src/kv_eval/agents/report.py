@@ -32,6 +32,7 @@ from kv_eval.schemas import (
     CheckResult,
     DomainSpec,
     PerspectiveResult,
+    QualityVerdict,
     Synthesis,
     Tech,
     TechProfile,
@@ -144,13 +145,21 @@ def _matrix(state: MainState, synthesis: Synthesis | None) -> str:
     return head + "\n" + "\n".join(rows)
 
 
-def _limitations(synthesis: Synthesis | None, checks: dict[str, CheckResult]) -> str:
+def _limitations(
+    synthesis: Synthesis | None,
+    checks: dict[str, CheckResult],
+    quality: dict[str, QualityVerdict] | None = None,
+) -> str:
     items = list(synthesis.limitations) if synthesis else []
     items.append(f"모든 평가는 {TRL_ESTIMATE_PHRASE}이며, 비공개 정보(실측 성능·운영 사례)는 반영되지 않음")
     for perspective, check in checks.items():
         label = _PERSPECTIVE_LABEL.get(perspective, perspective)
         items += [f"{label}: 근거 부족 — {m}" for m in check.missing]
         items += [f"{label}: {n}" for n in check.notes]
+    # 품질 평가의 "근거 부족:" 이슈는 재작성으로 못 고치므로 원문 그대로 기록한다.
+    # review 게이트는 이 문구가 6장에 있는지로 기록 여부를 판단한다.
+    for verdict in (quality or {}).values():
+        items += [gap for gap in verdict.evidence_gaps if gap not in items]
     return _bullets(items)
 
 
@@ -161,20 +170,31 @@ def _has_banned(sentence: str) -> bool:
     return any(word in cleaned for word in BANNED_EXPRESSIONS)
 
 
-# TODO[3-승민·4-선우·5-진호] 품질 평가 Loop의 수정 단계
-#   - 지금 _revise는 금지 표현 문장과 해석되지 않는 인용만 지운다.
-#   - state["quality_checks"]의 각 QualityVerdict.targets(문장 원문)를 받아 해당 문장을 지우거나
-#     중립 문장으로 바꾼다. 문장 매칭은 원문 그대로 한다(LLM이 바꿔 쓴 문장은 매칭하지 않음).
-#   - "근거 부족:" 이슈는 여기서 고칠 수 없다. _limitations에 그대로 추가한다.
-#   - 수정 규칙은 각 평가 담당이 자기 criterion 몫을 추가하고, 함수 구조는 5번 진호가 정한다.
+# 품질 평가 Loop의 수정 단계. 평가 노드가 QualityVerdict.targets에 넣은 문장 원문을 지운다.
+#   문장 매칭은 원문 그대로 한다(LLM이 바꿔 쓴 문장은 매칭하지 않음).
+#   "근거 부족:" 이슈는 여기서 고칠 수 없다. _limitations가 6장에 기록한다.
+# TODO[3-승민·4-선우] 지우는 대신 중립 문장으로 바꿔야 하는 경우는 자기 criterion 몫을
+#   _rewrite_target에 추가한다(지금은 지우기만 한다).
+def _quality_targets(state: MainState) -> list[str]:
+    return [t for v in (state.get("quality_checks") or {}).values() if not v.passed for t in v.targets if t.strip()]
+
+
+def _rewrite_target(line: str, target: str) -> str:
+    return line.replace(target, "")
+
+
 def _revise(body: str, state: MainState) -> str:
     known = known_citation_ids(state) | RESERVED_LABELS
     body = CITATION.sub(lambda m: m.group(0) if m.group(1) in known else "", body)
+    targets = _quality_targets(state)
     lines = []
     for line in body.split("\n"):
         if line.startswith("#") or line.startswith("|"):
             lines.append(line)
             continue
+        for target in targets:
+            if target in line:
+                line = _rewrite_target(line, target)
         sentences = re.split(r"(?<=[.。!?다])\s+", line)
         lines.append(" ".join(s for s in sentences if not _has_banned(s)))
     return "\n".join(lines)
@@ -251,7 +271,7 @@ def report_agent(state: MainState) -> MainState:
 
 # 6. 한계점
 
-{_limitations(synthesis, checks)}
+{_limitations(synthesis, checks, state.get("quality_checks"))}
 
 **확증편향 방지 조치**
 

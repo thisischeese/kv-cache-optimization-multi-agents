@@ -85,16 +85,17 @@ MAX_REPORT_REVISIONS = 1
 #   BANNED_EXPRESSIONS / ALLOWED_NEGATIONS는 위에 있다. neutrality 노드가 이어받는다.
 # TODO[4-선우] MAX_SINGLE_SOURCE_SHARE (예: 0.5), MIN_DISTINCT_SOURCES_PER_TECH (예: 2),
 #   MIN_SOURCE_TYPES_PER_TECH (예: 2). 임계값을 바꾸면 BIAS_MEASURES 문구도 함께 맞춘다.
-# TODO[5-진호] 커버리지 임계값이 필요하면 여기에 둔다(예: MIN_CITATIONS_PER_PERSPECTIVE = 1).
+# 관점 커버리지: 관점 절마다 있어야 하는 본문 인용 수(nodes/coverage.py)
+MIN_CITATIONS_PER_PERSPECTIVE = 1
 
 # --- orchestrator-worker / run control ---
 MAX_PLAN_ROUNDS = 2        # round 1 + one re-plan (same budget as the old recheck)
 MAX_TASK_ATTEMPTS = 2
 MAX_TASKS_PER_ROUND = 8    # caps an LLM plan that inflates the task list
-# 품질 평가 경로를 통합하기 전까지 유지하는 임시 안전 상한이다.
+# 현재 연결된 coverage 경로에서는 사용자 결정에 따라 임시 안전 상한 30을 유지한다.
 MAX_NODE_RUNS = 30
-# TODO[1-우진/5-진호] 품질 노드와 review 경로를 통합한 뒤
-#   평가 노드 실행 수와 재계획/보고서 라운드를 포함해 상한을 다시 계산한다.
+# TODO[1-우진/5-진호] 나머지 품질 노드와 review 경로를 통합한 뒤 상한을 다시 계산한다.
+#   팀 변경의 품질 노드 3개 기준 32회 경로와 여유 상한 36 제안은 통합 시 검토한다.
 GRAPH_RECURSION_LIMIT = 40  # last-resort guard passed in the invoke config
 
 # --- PDF ---

@@ -1,10 +1,23 @@
-"""Rule check on the generated report, with a bounded revision loop.
+"""Report quality gate, with a bounded revision loop (요구사항 D).
 
-Checks: SUMMARY is the first section and REFERENCE the last, SUMMARY length,
-the TRL "공개 정보 기반 추정" phrase, every body citation resolves, and no
-ranking/recommendation wording. `route_after_review` sends the report back
-to `report_agent` at most MAX_REPORT_REVISIONS times; after that, remaining
-issues stay in `report_issues` (app.py saves them next to the report).
+review runs after the quality nodes (coverage, and later neutrality /
+bias_control) and does two things:
+- its own format checks: SUMMARY first and REFERENCE last, SUMMARY length,
+  the TRL "공개 정보 기반 추정" phrase, every body citation resolves, no
+  English narrative, no ranking/recommendation wording;
+- it merges every QualityVerdict in `quality_checks` into `report_issues`,
+  the one field only review writes.
+
+Routing (`route_after_review`, same decision as the one review logs):
+- node_runs >= MAX_NODE_RUNS -> "done" (budget_exhausted)
+- a failed verdict names perspectives to rework and plan.round < MAX_PLAN_ROUNDS
+  -> "replan" (orchestrator re-plans only those perspectives; the round cap is
+  shared with evidence_check's re-plan). A re-plan rebuilds the report, so it
+  goes before any rewrite and does not use the rewrite budget.
+- rewritable issues, or "근거 부족:" issues the report does not list yet in
+  6장 한계점 -> "retry" (report rewrites and records), at most
+  MAX_REPORT_REVISIONS times
+- otherwise -> "done"; what is left stays in `report_issues` (app.py saves it)
 """
 
 import re
@@ -13,29 +26,20 @@ from typing import Literal
 from kv_eval.config import (
     ALLOWED_NEGATIONS,
     BANNED_EXPRESSIONS,
+    MAX_NODE_RUNS,
+    MAX_PLAN_ROUNDS,
     MAX_REPORT_REVISIONS,
     SUMMARY_MAX_CHARS,
     TRL_ESTIMATE_PHRASE,
 )
+from kv_eval.observability import log_event
 from kv_eval.references import cited_ids, known_citation_ids
+from kv_eval.schemas import EVIDENCE_GAP_PREFIX
 from kv_eval.state import MainState
 
 _TOP_HEADING = re.compile(r"^# (.+)$", re.MULTILINE)
 
-# TODO[5-진호] review를 보고서 품질 게이트로 확장한다(요구사항 D: 평가 결과가 미달이면 Loop).
-#   - 흐름: report -> neutrality / bias_control / coverage (병렬) -> review -> retry | replan | done
-#   - review_node는 형식 검사(SUMMARY·REFERENCE 위치, SUMMARY 길이, TRL 문구, 인용 ID 실재)를 유지한다.
-#     그리고 state["quality_checks"]의 QualityVerdict를 모아 report_issues 하나로 합친다(혼자 쓰는 필드).
-#   - 금지 표현 검사는 neutrality.py로 옮긴다. 아래 find_issues에서 지우는 일은 3번 승민과 같은 PR에서 한다.
-#   - route_after_review
-#       재작성으로 고칠 수 있는 이슈 -> "retry" (report_revision <= MAX_REPORT_REVISIONS일 때)
-#       "근거 부족:" 이슈(bias_control, coverage) -> 전환 뒤에는 "replan"(orchestrator, plan.round 상한 공유).
-#                                            전환 전에는 한계점에 기록하고 "done"
-#       node_runs >= MAX_NODE_RUNS -> "done" (log_event "budget_exhausted")
-#   - 결정 로그: 매번 log_event(state.get("run_id"), "review", <retry|replan|done>,
-#       reason=<미달 항목 요약>, failed=[criterion...]) 한 줄을 남긴다.
-#   - 재평가할 때 이전 라운드의 quality_checks가 남아 있다. 평가 노드가 매번 자기 키를 덮어쓰므로
-#     게이트는 현재 값만 보면 된다.
+# TODO[5-진호] 3번 승민 neutrality 머지와 같은 PR에서: 아래 find_issues의 금지 표현 검사를 지운다.
 #
 # TODO[담당 미정] Groundedness (요구사항 D 최소 평가 항목, 역할 분담에 없음 -> 팀 논의 필요)
 #   - 지금은 아래 find_issues의 "인용 ID 실재" 검사(1안, 형식)만 있다.
@@ -119,18 +123,72 @@ def find_issues(report_md: str, state: MainState) -> list[str]:
     return issues
 
 
+Decision = Literal["retry", "replan", "done"]
+
+
+def _quality_issues(state: MainState) -> tuple[list[str], list[str]]:
+    """(issues, failed criteria) from the current quality_checks."""
+    issues: list[str] = []
+    failed: list[str] = []
+    for criterion, verdict in sorted((state.get("quality_checks") or {}).items()):
+        if not verdict.passed:
+            failed.append(criterion)
+            issues += verdict.issues
+    return issues, failed
+
+
+def rework_perspectives(state: MainState) -> list[str]:
+    """Perspectives the failed quality verdicts ask to rework, in a stable order.
+    orchestrator reads the same list when review sends it a re-plan."""
+    found = {
+        p
+        for verdict in (state.get("quality_checks") or {}).values()
+        if not verdict.passed
+        for p in verdict.rework_perspectives
+    }
+    return sorted(found)
+
+
+def _decide(state: MainState) -> tuple[Decision, str]:
+    """Pure: the same State always routes the same way. review_node logs it,
+    route_after_review follows it."""
+    issues = state.get("report_issues") or []
+    if not issues:
+        return "done", "통과"
+    if state.get("node_runs", 0) >= MAX_NODE_RUNS:
+        return "done", f"budget_exhausted: node_runs {state.get('node_runs')} >= {MAX_NODE_RUNS}"
+    rework = rework_perspectives(state)
+    plan = state.get("plan")
+    if rework and plan is not None and plan.round < MAX_PLAN_ROUNDS:
+        return "replan", f"근거 보완 재계획: {', '.join(rework)}"
+    if state.get("report_revision", 0) > MAX_REPORT_REVISIONS:
+        return "done", f"수정 {MAX_REPORT_REVISIONS}회 소진, 남은 이슈 {len(issues)}건 기록"
+
+    rewritable = [i for i in issues if not i.startswith(EVIDENCE_GAP_PREFIX)]
+    limitations = _section(state.get("report_md") or "", "6. 한계점")
+    unrecorded = [i for i in issues if i.startswith(EVIDENCE_GAP_PREFIX) and i not in limitations]
+    if rewritable or unrecorded:
+        return "retry", f"재작성 {len(rewritable)}건, 한계점 기록 {len(unrecorded)}건"
+    # 근거 부족만 남았고 이미 한계점에 적혀 있다: 재작성으로 더 할 일이 없다.
+    return "done", f"근거 부족 {len(issues)}건 한계점 기록됨"
+
+
 def review_node(state: MainState) -> MainState:
     report_md = state.get("report_md")
     issues = find_issues(report_md, state) if report_md else ["report_md is missing or empty"]
+    quality, failed = _quality_issues(state)
+    issues += quality
 
-    if not issues:
-        return {"report_issues": []}
-    # Bump only when something is wrong: this is what bounds the loop.
-    return {"report_issues": issues, "report_revision": state.get("report_revision", 0) + 1}
+    # Bump only when a rewrite is on the table: this is what bounds the rewrite
+    # loop. A re-plan is bounded by plan.round instead and keeps the budget.
+    update: MainState = {"report_issues": issues}
+    bumped = {**update, "report_revision": state.get("report_revision", 0) + 1} if issues else update
+    decision, reason = _decide({**state, **bumped})
+    if decision != "replan":
+        update = bumped
+    log_event(state.get("run_id"), "review", decision, reason=reason, failed=failed, issues=len(issues))
+    return update
 
 
-def route_after_review(state: MainState) -> Literal["retry", "done"]:
-    issues = state.get("report_issues", [])
-    if issues and state.get("report_revision", 0) <= MAX_REPORT_REVISIONS:
-        return "retry"
-    return "done"
+def route_after_review(state: MainState) -> Decision:
+    return _decide(state)[0]

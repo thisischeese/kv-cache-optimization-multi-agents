@@ -94,5 +94,6 @@ def test_budget_covers_all_task_retries_and_report_revision(monkeypatch, offline
     assert all(count == MAX_PLAN_ROUNDS for count in offline_agents.values())
     assert final["plan"].round == MAX_PLAN_ROUNDS
     assert final["report_revision"] == MAX_REPORT_REVISIONS + 1
-    assert final["node_runs"] == 20
+    # 보고서가 생성될 때마다 연결된 품질 노드도 한 번씩 실행된다.
+    assert final["node_runs"] == 20 + (MAX_REPORT_REVISIONS + 1) * len(graph_module.QUALITY_NODES)
     assert final["node_runs"] <= MAX_NODE_RUNS == 30

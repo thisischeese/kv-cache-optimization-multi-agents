@@ -14,6 +14,7 @@ from kv_eval.agents.synthesis import synthesis_agent
 from kv_eval.agents.tech_research import tech_research_target_node
 from kv_eval.agents.trl import trl_agent
 from kv_eval.instrument import instrumented, is_retryable
+from kv_eval.nodes.coverage import coverage_node
 from kv_eval.nodes.evidence_check import evidence_check_node, route_after_evidence_check
 from kv_eval.nodes.orchestrator import orchestrator_node
 from kv_eval.nodes.review import route_after_review, review_node
@@ -23,9 +24,10 @@ from kv_eval.state import MainState, TechResearchInput, WorkerInput
 
 # 외부 호출의 일시 오류는 RetryPolicy가 재시도한다. 소진 시에는 예외가 전파된다.
 # 그 외 외부 노드 실패는 래퍼가 기록하고, 규칙 노드의 오류는 그대로 전파한다.
-# TODO[3-승민/4-선우/5-진호] LLM Judge를 쓰는 품질 평가 노드도 여기에 추가한다.
-#   Judge가 실패해도 보고서 생성이 멈추면 안 된다(fail_soft).
-EXTERNAL_NODES: frozenset[str] = frozenset({"tech_research", "orchestrator", "worker", "synthesis"})
+# 품질 평가 노드는 LLM Judge를 쓰므로 여기에 넣는다. Judge가 실패해도 보고서 생성은 멈추지 않는다(fail_soft).
+# TODO[3-승민·4-선우] neutrality / bias_control 노드를 QUALITY_NODES에 추가한다.
+QUALITY_NODES: dict[str, object] = {"coverage": coverage_node}
+EXTERNAL_NODES: frozenset[str] = frozenset({"tech_research", "orchestrator", "worker", "synthesis", *QUALITY_NODES})
 RETRY_POLICY = RetryPolicy(max_attempts=3, retry_on=is_retryable)
 
 
@@ -94,22 +96,22 @@ def build_graph() -> CompiledStateGraph:
     )
     builder.add_edge("synthesis", "report")
 
-    # TODO[3-승민/4-선우/5-진호] 보고서 품질 평가 노드를 report와 review 사이에 넣는다(요구사항 D).
-    #   - report -> neutrality / bias_control / coverage (병렬) -> review(게이트)
-    #     평가 기준이 고정된 병렬 평가라 정적 edge로 둔다. 고정 Fan-out 금지는 Worker에만 해당한다.
-    #   - 위 evidence_check처럼 평가 노드마다 review로 가는 edge를 따로 둔다.
-    #     같은 superstep에 끝나므로 review는 1번 실행된다.
-    #   - 각 평가 노드는 quality_checks[criterion]에만 쓴다(merge_by_key reducer, state.py TODO).
-    #   - 노드 추가는 각 담당이 하고, 아래 edge와 route 변경은 5번 진호가 맡는다(review.py TODO).
-    builder.add_edge("report", "review")
+    # 보고서 품질 평가(요구사항 D): report -> 평가 노드(병렬) -> review(게이트)
+    #   평가 기준이 고정된 병렬 평가라 정적 edge로 둔다. 고정 Fan-out 금지는 Worker에만 해당한다.
+    #   evidence_check처럼 평가 노드마다 review로 가는 edge를 따로 둔다. 같은 superstep에 끝나므로
+    #   review는 1번 실행된다. 각 평가 노드는 quality_checks[criterion]에만 쓴다.
+    for name, node in QUALITY_NODES.items():
+        _add_node(builder, name, node)
+        builder.add_edge("report", name)
+        builder.add_edge(name, "review")
 
-    # 보고서 수정은 기존 상한 안에서 진행하며 품질 평가 구현은 해당 담당자가 연결한다.
-    # TODO[5-진호] 오케스트레이터 전환 뒤 근거 부족 이슈용 분기를 추가한다:
-    #   {"retry": "report", "replan": "orchestrator", "done": END}
+    # Bounded revision loop: review -> report at most MAX_REPORT_REVISIONS
+    # times (route_after_review), then review -> END either way.
+    # 품질 평가가 근거 보완을 요청하면 orchestrator가 그 관점만 재계획한다(plan.round 상한 공유).
     builder.add_conditional_edges(
         "review",
         route_after_review,
-        {"retry": "report", "done": END},
+        {"retry": "report", "replan": "orchestrator", "done": END},
     )
 
     return builder.compile()

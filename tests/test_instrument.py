@@ -20,7 +20,7 @@ graph_module = sys.modules["kv_eval.graph"]
 
 ALL_NODES = {
     "setup", "tech_research:kivi", "tech_research:infinigen",
-    "orchestrator", "evidence_check", "synthesis", "report", "review",
+    "orchestrator", "evidence_check", "synthesis", "report", "coverage", "review",
 }
 
 
@@ -160,6 +160,9 @@ def test_graph_fills_status_for_every_node_and_logs_each_run(runs_dir) -> None:
     assert final["node_runs"] == len(outcomes)
     assert {e["node"] for e in events} == ALL_NODES | set(final["task_status"])
     assert all(e["run_id"] == "run-ok" for e in events)  # Send payload carried it too
+    # Gate decisions are logged by the nodes themselves, next to the wrapper events.
+    decisions = {(e["node"], e["decision"]) for e in events if "duration_ms" not in e}
+    assert {("coverage", "pass"), ("review", "done")} <= decisions
 
 
 def test_failing_agent_is_recorded_and_the_report_still_completes(monkeypatch, runs_dir) -> None:

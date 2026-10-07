@@ -27,6 +27,7 @@ from kv_eval.schemas import (
     NodeStatus,
     PerspectiveResult,
     Plan,
+    QualityVerdict,
     Synthesis,
     Task,
     TaskStatus,
@@ -103,10 +104,10 @@ class MainState(TypedDict, total=False):
     evidence_check: dict[str, CheckResult]
     report_issues: list[str]
 
-    # TODO[5-진호] 보고서 품질 평가 결과 필드를 추가한다(schemas.QualityVerdict 확정 뒤, 0번 다은 리뷰).
-    #   quality_checks: Annotated[dict[str, QualityVerdict], merge_by_key]   # criterion 키
-    #   평가 노드들이 report 뒤에 병렬로 쓰므로 reducer가 필요하다. 재평가 때는 자기 키만 덮어쓴다.
-    #   report_issues는 review 게이트가 이 값을 모아 혼자 쓰는 필드로 유지한다.
+    # 보고서 품질 평가 결과. 평가 노드들이 report 뒤에 병렬로 자기 criterion 키만 쓴다.
+    # 재평가 때도 자기 키만 덮어쓰므로 게이트(review)는 현재 값만 보면 된다.
+    # report_issues는 review 게이트가 이 값을 모아 혼자 쓰는 필드로 유지한다.
+    quality_checks: Annotated[dict[str, QualityVerdict], merge_by_key]   # criterion 키
 
     # ── 종료 보장 ──────────────────────────────────────────
     report_revision: int
