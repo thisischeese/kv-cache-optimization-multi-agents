@@ -691,20 +691,18 @@ def run_stakeholder_evaluation(
 def _mock_evaluation() -> StakeholderEvaluation:
     return StakeholderEvaluation(
         summary=(
-            "[MOCK] Serving operators care about throughput per GPU, model "
-            "engineers care about accuracy regression, and infrastructure teams "
-            "care about how much of the stack must be modified."
+            "[MOCK] 서빙 운영자는 GPU당 처리량을, 모델 엔지니어는 정확도 저하를, "
+            "인프라 팀은 stack 수정 범위를 중요하게 본다."
         ),
         tech_results={
-            "kivi": "[MOCK] Competitor camp points at accuracy regression.",
-            "infinigen": "[MOCK] Competitor camp points at host transfer overhead.",
+            "kivi": "[MOCK] 경쟁 진영은 정확도 저하 가능성을 지적한다.",
+            "infinigen": "[MOCK] 경쟁 진영은 host transfer overhead를 지적한다.",
         },
         evidence=[
             Evidence(
                 evidence_id="stakeholder-001",
                 claim=(
-                    "[MOCK] Accuracy regression is the primary adoption blocker "
-                    "for cache compression."
+                    "[MOCK] cache compression 도입의 주요 장애물은 정확도 저하이다."
                 ),
                 source_id="mock-source-stakeholder",
             ),

@@ -46,33 +46,31 @@ _MOCK_PROFILES: dict[str, TechProfile] = {
     "kivi": TechProfile(
         tech_id="kivi",
         overview=(
-            "[MOCK] KIVI is a training-free KV cache quantization method that "
-            "pushes the cache toward 2-bit precision to cut serving memory."
+            "[MOCK] KIVI는 서빙 메모리를 줄이기 위해 KV cache를 2-bit 정밀도에 "
+            "가깝게 낮추는 학습 불필요 양자화 기법이다."
         ),
         mechanism=(
-            "[MOCK] Applies per-channel quantization to the key cache and "
-            "per-token quantization to the value cache, keeping a small "
-            "full-precision residual window for recent tokens."
+            "[MOCK] key cache에는 per-channel 양자화를, value cache에는 per-token "
+            "양자화를 적용하며 최근 토큰에는 작은 full-precision residual window를 유지한다."
         ),
         limitations=[
-            "[MOCK] Quantization error grows on long-context workloads.",
-            "[MOCK] Requires custom kernels to realize the theoretical savings.",
+            "[MOCK] 긴 컨텍스트 워크로드에서는 양자화 오차가 커질 수 있다.",
+            "[MOCK] 이론적 절감 효과를 실현하려면 custom kernel이 필요하다.",
         ],
     ),
     "infinigen": TechProfile(
         tech_id="infinigen",
         overview=(
-            "[MOCK] InfiniGen is a KV cache management approach for offloading "
-            "based LLM inference across the GPU/CPU memory hierarchy."
+            "[MOCK] InfiniGen은 GPU/CPU 메모리 계층을 활용하는 오프로딩 기반 "
+            "LLM 추론용 KV cache 관리 접근이다."
         ),
         mechanism=(
-            "[MOCK] Speculates which KV entries matter for the next attention "
-            "step and prefetches only those from CPU memory, overlapping "
-            "transfer with compute."
+            "[MOCK] 다음 attention 단계에 중요한 KV 항목을 예측하고 CPU 메모리에서 "
+            "해당 항목만 prefetch해 전송과 계산을 겹친다."
         ),
         limitations=[
-            "[MOCK] Depends on host memory bandwidth and PCIe transfer budget.",
-            "[MOCK] Speculation misses add latency on irregular attention patterns.",
+            "[MOCK] host memory bandwidth와 PCIe transfer budget에 의존한다.",
+            "[MOCK] 불규칙한 attention pattern에서 예측 실패가 지연을 늘릴 수 있다.",
         ],
     ),
 }

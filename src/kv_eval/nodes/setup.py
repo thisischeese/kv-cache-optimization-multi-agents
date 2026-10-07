@@ -12,8 +12,7 @@ def setup_node(state: MainState) -> MainState:
             name="KIVI",
             camp="SW",
             selection_reason=(
-                "Representative training-free KV cache quantization method on the "
-                "software side."
+                "소프트웨어 측면에서 대표적인 학습 불필요 KV cache 양자화 기법이다."
             ),
         ),
         Tech(
@@ -21,8 +20,7 @@ def setup_node(state: MainState) -> MainState:
             name="InfiniGen",
             camp="HW",
             selection_reason=(
-                "Representative memory-hierarchy/offloading approach on the "
-                "hardware-system side."
+                "하드웨어·시스템 측면에서 대표적인 메모리 계층/오프로딩 접근이다."
             ),
         ),
     ]
@@ -30,8 +28,8 @@ def setup_node(state: MainState) -> MainState:
     domain = DomainSpec(
         name="cloud_llm_serving",
         problem_definition=(
-            "In cloud LLM serving, KV cache memory growth with batch size and "
-            "context length limits throughput and raises serving cost."
+            "클라우드 LLM 서빙에서는 배치 크기와 컨텍스트 길이가 커질수록 "
+            "KV cache 메모리 사용량이 증가해 처리량을 제한하고 서빙 비용을 높인다."
         ),
     )
 

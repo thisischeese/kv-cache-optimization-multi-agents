@@ -624,20 +624,19 @@ def run_domain_evaluation(
 def _mock_evaluation() -> DomainEvaluation:
     return DomainEvaluation(
         summary=(
-            "[MOCK] In cloud LLM serving, KIVI mainly relaxes the memory "
-            "capacity ceiling for larger batches, while InfiniGen mainly shifts "
-            "the bottleneck from GPU capacity to host transfer bandwidth."
+            "[MOCK] 클라우드 LLM 서빙에서 KIVI는 큰 배치의 메모리 용량 한계를 "
+            "완화하고, InfiniGen은 병목을 GPU 용량에서 host transfer bandwidth로 옮긴다."
         ),
         tech_results={
-            "kivi": "[MOCK] Memory footprint reduction with a possible accuracy trade-off.",
-            "infinigen": "[MOCK] Capacity expansion with host memory and PCIe transfer cost.",
+            "kivi": "[MOCK] 메모리 footprint를 줄이지만 정확도 trade-off가 생길 수 있다.",
+            "infinigen": "[MOCK] host memory로 용량을 확장하지만 PCIe transfer cost가 따른다.",
         },
         evidence=[
             Evidence(
                 evidence_id="domain-001",
                 claim=(
-                    "[MOCK] Batch size and context length jointly drive KV cache "
-                    "growth in multi-tenant serving."
+                    "[MOCK] multi-tenant serving에서는 batch size와 context length가 함께 "
+                    "KV cache 증가를 유발한다."
                 ),
                 source_id="mock-source-domain",
             ),

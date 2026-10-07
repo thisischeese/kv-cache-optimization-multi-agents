@@ -95,7 +95,7 @@ def _perspective(result: PerspectiveResult | None) -> str:
     if result is None:
         return "(결과 없음)"
     per_tech = f"{_per_tech(result)}\n\n" if result.tech_results else ""
-    return f"{per_tech}{result.summary}\n\n**근거**\n\n{_evidence(result)}"
+    return f"{per_tech}{result.summary}\n\n**원문 근거**\n\n{_evidence(result)}"
 
 
 _CONFIDENCE = {"high": "높음", "medium": "중간", "low": "낮음"}
@@ -119,7 +119,7 @@ def _trl(result: TRLResult | None) -> str:
         return f"(결과 없음)\n\n※ TRL은 {TRL_ESTIMATE_PHRASE}입니다."
     return (
         f"※ 아래 TRL은 {TRL_ESTIMATE_PHRASE}입니다.\n\n{_trl_levels(result)}{_per_tech(result)}\n\n"
-        f"{result.summary}\n\n**근거**\n\n{_evidence(result)}"
+        f"{result.summary}\n\n**원문 근거**\n\n{_evidence(result)}"
     )
 
 
