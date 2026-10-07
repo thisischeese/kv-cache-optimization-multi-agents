@@ -463,3 +463,16 @@ def test_unlisted_repository_is_read_before_publisher_filter(monkeypatch, offici
     result = trl._verify_web(WebEvidence(title="README", snippet="", url=url), "KIVI", "framework_doc")
     assert bool(result) == official
     assert fetched == [url, "https://github.com/new-org/runtime"]
+
+
+def test_report_claim_shows_short_quote_but_keeps_full_text(papers):
+    long_quote = "KIVI implements KV cache quantization and evaluates a working prototype. " + "Table 3 row " * 80
+    papers = [papers[0].model_copy(update={"quote": long_quote}), papers[1]]
+    judged = assessment(papers, {1, 2})
+    _, used = trl._evaluate(judged, judged, papers, "kivi", [])
+    core = next(e for e in used if e.evidence_id == "core")
+
+    for line in core.claim.splitlines():
+        quote_part = line.split(" 근거: ", 1)[1]
+        assert len(quote_part) <= trl._CLAIM_QUOTE_CHARS + 1 and quote_part.endswith("…")
+    assert long_quote in core.quote                       # 원문 전체는 그대로 남는다
