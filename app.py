@@ -11,6 +11,7 @@ import uuid
 from dotenv import load_dotenv
 
 from kv_eval.config import (
+    MAX_PLAN_ROUNDS,
     OUTPUT_DIR,
     PDF_PATH,
     PERSPECTIVES,
@@ -27,6 +28,7 @@ from kv_eval.observability import log_event, run_config, run_dir
 from kv_eval.pdf import MAX_REPORT_PAGES, markdown_to_pdf, report_pdf_options
 from kv_eval.results import get_result
 from kv_eval.state import MainState
+from kv_eval.schemas import Plan, Task
 
 
 def main() -> None:
@@ -41,12 +43,40 @@ def main() -> None:
     #              log_event(run_id, "app", "run_resume")
     #   - 재시도 대상 예외로 실행이 중단되면 재개 명령(uv run python app.py --resume <run_id>)을 안내하고 종료한다.
     parser = argparse.ArgumentParser(description="Run the KV cache evaluation graph once.")
-    parser.add_argument("--resume", metavar="RUN_ID", help="continue an interrupted run")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--resume", metavar="RUN_ID", help="continue an interrupted run")
+    mode.add_argument("--report-only", metavar="RUN_ID", help="reuse collected results and regenerate only the report and quality checks")
+    parser.add_argument("--repair-missing", action="store_true", help="with --report-only, rerun only perspectives without evidence")
     args = parser.parse_args()
+    if args.repair_missing and not args.report_only:
+        parser.error("--repair-missing은 --report-only RUN_ID와 함께 사용하세요.")
 
     with checkpoint.open_checkpointer() as saver:
         graph = build_graph(checkpointer=saver)
-        if args.resume:
+        if args.report_only:
+            source = graph.get_state(run_config(args.report_only))
+            if not source.values.get("report_md"):
+                raise ValueError("저장된 보고서 초안이 없습니다. 실행 ID를 확인하세요.")
+            run_id = str(uuid.uuid4())
+            # 별도 실행에 수집 결과를 복사한다. 계획을 비워 보고서 검토가 재조사로 돌아가지 않게 한다.
+            restored = {
+                **source.values, "run_id": run_id, "plan": None,
+                "node_runs": 0, "report_revision": 0,
+            }
+            tasks = []
+            if args.repair_missing:
+                tasks = [Task(task_id=p, kind=p,
+                              tech_ids=[t.tech_id for t in source.values.get("targets", [])])
+                         for p in PERSPECTIVES
+                         if get_result(source.values, p) is None or not get_result(source.values, p).evidence]
+                # 수동 복구에서 선택한 빈 관점만 한 번 실행하고 기존 정상 결과는 유지한다.
+                restored["plan"] = Plan(round=MAX_PLAN_ROUNDS, source="rule", tasks=tasks)
+            graph.update_state(run_config(run_id), restored,
+                               as_node="orchestrator" if tasks else "synthesis")
+            log_event(run_id, "app", "report_regenerate", source_run=args.report_only,
+                      repair_tasks=[task.task_id for task in tasks])
+            graph_input = None
+        elif args.resume:
             run_id = args.resume
             if not checkpoint.can_resume(graph, run_id):
                 print(f"Nothing to resume for run {run_id} (finished or unknown).")
