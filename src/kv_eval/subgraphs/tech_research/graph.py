@@ -71,7 +71,7 @@ def build_item_graph(deps: TechResearchDeps) -> CompiledStateGraph:
     builder.add_edge("verify", END)
     builder.add_edge("mark_not_found", END)
 
-    return builder.compile()
+    return builder.compile(checkpointer=False)
 
 
 def build_tech_graph(deps: TechResearchDeps) -> CompiledStateGraph:
@@ -84,7 +84,7 @@ def build_tech_graph(deps: TechResearchDeps) -> CompiledStateGraph:
     builder.add_edge("research_item", "assemble_profile")
     builder.add_edge("assemble_profile", END)
 
-    return builder.compile()
+    return builder.compile(checkpointer=False)
 
 
 def build_research_graph(deps: TechResearchDeps) -> CompiledStateGraph:
@@ -95,4 +95,4 @@ def build_research_graph(deps: TechResearchDeps) -> CompiledStateGraph:
     builder.add_conditional_edges(START, fan_out_techs, ["tech_research"])
     builder.add_edge("tech_research", END)
 
-    return builder.compile()
+    return builder.compile(checkpointer=False)
