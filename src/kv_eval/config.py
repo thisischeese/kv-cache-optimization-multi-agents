@@ -130,10 +130,14 @@ MIN_CITATIONS_PER_PERSPECTIVE = 1
 MAX_PLAN_ROUNDS = 2        # round 1 + one re-plan (same budget as the old recheck)
 MAX_TASK_ATTEMPTS = 2
 MAX_TASKS_PER_ROUND = 8    # caps an LLM plan that inflates the task list
-# 현재 연결된 coverage 경로에서는 사용자 결정에 따라 임시 안전 상한 30을 유지한다.
-MAX_NODE_RUNS = 30
-# TODO[1-우진/5-진호] 나머지 품질 노드와 review 경로를 통합한 뒤 상한을 다시 계산한다.
-#   팀 변경의 품질 노드 3개 기준 32회 경로와 여유 상한 36 제안은 통합 시 검토한다.
+# Longest normal path with the 3 quality nodes (coverage, neutrality, bias_control):
+#   setup 1 + tech_research 2 + orchestrator 1 + worker 4 + evidence_check 1
+#   + [synthesis 1 + report 1 + quality 3 + review 1] x 2 (before / after the quality re-plan)
+#   + re-plan [orchestrator 1 + worker 4 + evidence_check 1]
+#   + rewrite [report 1 + quality 3 + review 1] = 32
+# Measured offline with every quality node failing and all 4 perspectives re-planned: 32.
+# Past this, routers force the run to finish, so keep a small margin above 32.
+MAX_NODE_RUNS = 36
 GRAPH_RECURSION_LIMIT = 40  # last-resort guard passed in the invoke config
 
 # --- PDF ---

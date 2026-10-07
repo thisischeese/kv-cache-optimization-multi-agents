@@ -36,3 +36,5 @@ module-name = "kv_eval"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# app.py를 import하는 테스트가 있어서 프로젝트 루트를 경로에 넣는다(uv run pytest로도 실행되게).
+pythonpath = ["."]
