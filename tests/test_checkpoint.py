@@ -56,19 +56,19 @@ def test_resume_reruns_only_the_interrupted_node(monkeypatch: pytest.MonkeyPatch
     graph = graph_module.build_graph(checkpointer=InMemorySaver())
     run_id = str(uuid.uuid4())
 
-    # synthesis keeps failing until RetryPolicy gives up, so the run stops.
+    # synthesis가 RetryPolicy 재시도를 다 쓸 때까지 실패하므로 실행이 멈춘다.
     with pytest.raises(ConnectionError):
         graph.invoke({}, run_config(run_id))
     assert can_resume(graph, run_id)
     assert len(synthesis_calls) == 3   # RETRY_POLICY.max_attempts
     assert len(market_calls) == 1 and len(trl_calls) == 1
 
-    # Same run_id, input None: continue from the checkpoint.
+    # 같은 run_id에 입력 None을 주면 체크포인트에서 이어서 실행한다.
     fail["on"] = False
     final_state = graph.invoke(None, run_config(run_id))
 
-    assert len(synthesis_calls) == 4   # only synthesis ran again
-    assert len(market_calls) == 1      # workers' writes were kept, not redone
+    assert len(synthesis_calls) == 4   # synthesis만 다시 실행됐다
+    assert len(market_calls) == 1      # worker 결과는 그대로 두고 다시 실행하지 않는다
     assert len(trl_calls) == 1
     assert final_state["report_md"]
     assert not can_resume(graph, run_id)

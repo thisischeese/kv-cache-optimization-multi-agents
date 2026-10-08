@@ -130,13 +130,13 @@ MIN_CITATIONS_PER_PERSPECTIVE = 1
 MAX_PLAN_ROUNDS = 2        # round 1 + one re-plan (same budget as the old recheck)
 MAX_TASK_ATTEMPTS = 2
 MAX_TASKS_PER_ROUND = 8    # caps an LLM plan that inflates the task list
-# Longest normal path with the 3 quality nodes (coverage, neutrality, bias_control):
+# 품질 노드 3개(coverage, neutrality, bias_control) 기준 정상 경로의 최대 노드 실행 수:
 #   setup 1 + tech_research 2 + orchestrator 1 + worker 4 + evidence_check 1
-#   + [synthesis 1 + report 1 + quality 3 + review 1] x 2 (before / after the quality re-plan)
-#   + re-plan [orchestrator 1 + worker 4 + evidence_check 1]
-#   + rewrite [report 1 + quality 3 + review 1] = 32
-# Measured offline with every quality node failing and all 4 perspectives re-planned: 32.
-# Past this, routers force the run to finish, so keep a small margin above 32.
+#   + [synthesis 1 + report 1 + 품질 3 + review 1] x 2 (품질 재계획 전·후)
+#   + 재계획 [orchestrator 1 + worker 4 + evidence_check 1]
+#   + 재작성 [report 1 + 품질 3 + review 1] = 32
+# 품질 노드가 모두 미달이고 4관점을 모두 재계획하는 경우를 오프라인으로 실측해도 32회였다.
+# 상한에 닿으면 라우터가 실행을 끝내므로 32보다 조금 여유를 둔다.
 MAX_NODE_RUNS = 36
 GRAPH_RECURSION_LIMIT = 40  # last-resort guard passed in the invoke config
 
