@@ -125,6 +125,10 @@ NEUTRALITY_JUDGE_MAX_CHARS = 30_000
 # 편향 통제(nodes/bias_control.py) 기준값은 위 evidence_check 기준 옆에 있다(독립 출처·비판 근거 기준을 같이 쓴다).
 # 관점 커버리지: 관점 절마다 있어야 하는 본문 인용 수(nodes/coverage.py)
 MIN_CITATIONS_PER_PERSPECTIVE = 1
+# 근거성(nodes/groundedness.py). Judge에는 인용이 붙은 문단과 그 인용 근거만 보낸다.
+GROUNDEDNESS_JUDGE_MAX_CHARS = 12000       # Judge에 보내는 문단·근거 블록 길이 상한
+GROUNDEDNESS_QUOTE_CHARS = 300             # 근거 원문(quote)은 이 길이까지만 보낸다
+GROUNDEDNESS_EVIDENCE_PER_PARAGRAPH = 5    # 문단 하나에 붙이는 근거 수 상한
 
 # --- orchestrator-worker / run control ---
 MAX_PLAN_ROUNDS = 2        # round 1 + one re-plan (same budget as the old recheck)

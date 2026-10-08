@@ -17,6 +17,7 @@ from kv_eval.instrument import instrumented, is_retryable
 from kv_eval.nodes.bias_control import bias_control_node
 from kv_eval.nodes.coverage import coverage_node
 from kv_eval.nodes.evidence_check import evidence_check_node, route_after_evidence_check
+from kv_eval.nodes.groundedness import groundedness_node
 from kv_eval.nodes.neutrality import neutrality_node
 from kv_eval.nodes.orchestrator import orchestrator_node
 from kv_eval.nodes.review import route_after_review, review_node
@@ -29,6 +30,7 @@ from kv_eval.state import MainState, TechResearchInput, WorkerInput
 # 품질 평가 노드는 LLM Judge를 쓰므로 여기에 넣는다. Judge가 실패해도 보고서 생성은 멈추지 않는다(fail_soft).
 QUALITY_NODES: dict[str, object] = {
     "coverage": coverage_node, "neutrality": neutrality_node, "bias_control": bias_control_node,
+    "groundedness": groundedness_node,
 }
 EXTERNAL_NODES: frozenset[str] = frozenset({"tech_research", "orchestrator", "worker", "synthesis", *QUALITY_NODES})
 RETRY_POLICY = RetryPolicy(max_attempts=3, retry_on=is_retryable)
