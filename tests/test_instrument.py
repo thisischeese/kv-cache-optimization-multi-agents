@@ -20,7 +20,8 @@ graph_module = sys.modules["kv_eval.graph"]
 
 ALL_NODES = {
     "setup", "tech_research:kivi", "tech_research:infinigen",
-    "orchestrator", "evidence_check", "synthesis", "report", "coverage", "neutrality", "bias_control", "review",
+    "orchestrator", "evidence_check", "synthesis", "report", "coverage", "neutrality", "bias_control", "groundedness",
+    "review",
 }
 
 

@@ -1,7 +1,7 @@
 """Report quality gate, with a bounded revision loop (요구사항 D).
 
-review runs after the quality nodes (coverage, and later neutrality /
-bias_control) and does two things:
+review runs after the quality nodes (coverage, neutrality, bias_control,
+groundedness) and does two things:
 - its own format checks: SUMMARY first and REFERENCE last, SUMMARY length,
   the TRL "공개 정보 기반 추정" phrase, every body citation resolves, no
   English narrative (ranking/recommendation wording moved to the neutrality
@@ -39,10 +39,8 @@ from kv_eval.state import MainState
 
 _TOP_HEADING = re.compile(r"^# (.+)$", re.MULTILINE)
 
-# TODO[담당 미정] Groundedness (요구사항 D 최소 평가 항목, 역할 분담에 없음 -> 팀 논의 필요)
-#   - 지금은 아래 find_issues의 "인용 ID 실재" 검사(1안, 형식)만 있다.
-#   - 2안: 본문 문장과 그 문장이 인용한 근거의 quote를 LLM Judge로 대조해 뒷받침 여부를 판정한다.
-#   - 구현한다면 nodes/groundedness.py로 분리하고, 같은 QualityVerdict 계약(criterion="groundedness")을 쓴다.
+# Groundedness: 아래 find_issues는 인용 ID가 실재하는지(형식)만 본다. 인용이 문장 내용을
+#   뒷받침하는지(내용)는 nodes/groundedness.py가 같은 QualityVerdict 계약으로 판정한다.
 _ENGLISH_WORD = re.compile(r"\b[A-Za-z][A-Za-z-]{2,}\b")
 _HANGUL = re.compile(r"[가-힣]")
 
